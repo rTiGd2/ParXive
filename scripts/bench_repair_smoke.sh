@@ -44,4 +44,8 @@ else
   echo "FAIL: Dataset hash mismatch after repair." >&2
   exit 1
 fi
-
+# Refuse to run in CI environments
+if [[ "${GITHUB_ACTIONS:-}" == "true" || "${CI:-}" == "true" ]]; then
+  echo "This benchmark is designed for local runs only. Skipping in CI." >&2
+  exit 2
+fi
