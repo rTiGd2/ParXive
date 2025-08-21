@@ -7,10 +7,13 @@ what quality checks to run, and the licensing terms for contributions.
 
 - Rust: stable toolchain (install via [rustup](https://rustup.rs))
 - Build everything:
+
   ```bash
   cargo build --workspace
   ```
+
 - Run tests:
+
   ```bash
   cargo test --workspace
   ```
