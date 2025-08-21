@@ -15,7 +15,7 @@ cargo build --release -p parx-cli
 cargo test --workspace
 ```
 
-## Quick Start
+## Quick Start (End Users)
 
 ```bash
 # Create parity (35% over stripes of 64, 1 MiB chunks)
@@ -128,3 +128,67 @@ Notes
 - ParX stores a compressed, CRC-protected index at the end of each volume file.
 - The manifest includes per-chunk BLAKE3 hashes and a dataset Merkle root.
 - Outer RS (parity-of-parity) is planned; GPU acceleration is optional.
+
+## Developers
+
+ParX is library-first. The `parx-core` crate exposes a clean API for encoding now, and will expose verify/audit/repair in Stage 2.
+
+### Library usage (Rust)
+
+Add to your `Cargo.toml`:
+
+```
+[dependencies]
+parx-core = { path = "./parx-core" } # use crates.io release when available
+```
+
+Encode example:
+
+```rust
+use parx_core::encode::{Encoder, EncoderConfig};
+use std::path::Path;
+
+fn main() -> anyhow::Result<()> {
+    let cfg = EncoderConfig {
+        chunk_size: 1 << 20,     // 1 MiB
+        stripe_k: 16,            // data shards per stripe
+        parity_pct: 35,          // M ≈ ceil(K * 0.35)
+        volumes: 3,              // number of parity volumes
+        outer_group: 0,          // reserved for outer RS
+        outer_parity: 0,
+    };
+    let input = Path::new("./data");
+    let out   = Path::new("./.parx");
+    let manifest = Encoder::encode(input, out, &cfg)?;
+    println!("Merkle root: {}", manifest.merkle_root_hex);
+    Ok(())
+}
+```
+
+Upcoming APIs (Stage 2):
+- Verify: re-hash and validate the manifest and Merkle root.
+- Audit: compute stripe health and repairability.
+- Repair: reconstruct missing chunks and write atomically.
+
+### Building from source
+
+```
+cargo build --release -p parx-cli
+cargo test --workspace
+```
+
+### Contributing
+
+- Pre-commit hook runs formatting, clippy (no warnings), and tests. Enable with:
+  - `git config core.hooksPath .githooks`
+- Please include tests for new functionality. Favor small, focused tests.
+- Security and robustness first: all inputs are untrusted; enforce bounds and limits.
+
+### Adopting ParX in other languages
+
+ParX aims for broad adoption. We will provide:
+- A stable C-compatible FFI for `parx-core` (encode/verify/audit/repair).
+- Bindings and examples for popular ecosystems (Python, Node.js, Go, etc.).
+- Packaging guidance and policies to meet inclusion guidelines in official registries.
+
+If you’re interested in a specific binding early, open an issue with your use case.
