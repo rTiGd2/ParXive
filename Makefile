@@ -1,4 +1,4 @@
-.PHONY: all debug release fmt clippy test bench-local bench-matrix bench-html bench-pack
+.PHONY: all debug release fmt clippy test bench-local bench-matrix bench-html bench-pack benchmarks bench-collate-html nightly
 all: release
 debug: ; cargo build
 release: ; cargo build --release
@@ -31,3 +31,19 @@ bench-collate-html:
 	python3 scripts/bench_collate.py $$OUTJSON $$(ls -1 $$OUTDIR/bench-*.jsonl 2>/dev/null) && \
 	python3 scripts/bench_to_html.py $$OUTJSON $$OUTDIR/summary_all.html && \
 	echo "Combined summary: $$OUTDIR/summary_all.html"
+
+# Full local benchmark suite: run matrix and generate summary
+benchmarks:
+	@echo "==> Running full local benchmark matrix..."; \
+	$(MAKE) bench-matrix; \
+	$(MAKE) bench-html; \
+	echo "==> Summary: _tgt/bench-results/summary.html"
+
+# Nightly: full, long-running verification suite
+# - Runs the full local benchmark matrix (guarded to refuse in CI)
+# - Collates all JSONL results and emits an aggregate HTML summary
+nightly:
+	@echo "==> Nightly (long) verification run starting..."; \
+	$(MAKE) bench-matrix; \
+	$(MAKE) bench-collate-html; \
+	echo "==> Nightly done. See _tgt/bench-results/ for JSONL and HTML."

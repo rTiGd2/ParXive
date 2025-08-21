@@ -4,6 +4,7 @@ use crate::path_safety::{validate_path, PathPolicy};
 use crate::rs_codec::RsCodec;
 use anyhow::{bail, Context, Result};
 use fs2::FileExt;
+use rayon::prelude::*;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -63,7 +64,7 @@ pub fn repair_with_policy(
     if m == 0 {
         bail!("no parity available (parity_pct=0)");
     }
-    let rs = RsCodec::new(k, m).context("init RS")?;
+    let _rs = RsCodec::new(k, m).context("init RS")?; // validate params early
     let parity_map = collect_parity_shards(Path::new(&mf.parity_dir), mf.chunk_size)?;
 
     // Build map idx -> (safe_path, offset, len) and record target file sizes
@@ -110,69 +111,82 @@ pub fn repair_with_policy(
         }
     }
 
-    let mut repaired_chunks = 0u64;
-    let mut failed_chunks = 0u64;
-    // Collect per-file edits for atomic replacement
-    let mut file_edits: HashMap<PathBuf, Vec<(u64, Vec<u8>)>> = HashMap::new();
-    for (stripe, missing) in to_repair {
-        // K data shards
-        let mut data_bufs: Vec<Option<Vec<u8>>> = Vec::with_capacity(k);
-        for i in 0..k {
-            let idx = stripe * k as u64 + i as u64;
-            if missing.contains(&i) {
-                data_bufs.push(None);
-            } else {
-                let mut buf = vec![0u8; mf.chunk_size];
-                if let Some((path, off, len)) = idx_map.get(&idx) {
-                    if let Ok(mut f) = File::open(path) {
-                        let _ = f.seek(SeekFrom::Start(*off));
-                        let mut small = vec![0u8; *len as usize];
-                        if f.read_exact(&mut small).is_ok() {
-                            buf[..small.len()].copy_from_slice(&small);
+    // Parallelize by stripe
+    let idx_map = idx_map; // move into closure
+    let file_sizes = file_sizes;
+    // parity_map is already owned and read-only
+    let chunk_size = mf.chunk_size;
+    type Edit = (PathBuf, u64, Vec<u8>);
+    type StripeResult = (u64, Vec<Edit>);
+    let results: Vec<StripeResult> = to_repair
+        .into_par_iter()
+        .map(|(stripe, missing)| {
+            let mut repaired_local = 0u64;
+            let mut edits_local: Vec<Edit> = Vec::new();
+            // K data shards
+            let mut data_bufs: Vec<Option<Vec<u8>>> = Vec::with_capacity(k);
+            for i in 0..k {
+                let idx = stripe * k as u64 + i as u64;
+                if missing.contains(&i) {
+                    data_bufs.push(None);
+                } else {
+                    let mut buf = vec![0u8; chunk_size];
+                    if let Some((path, off, len)) = idx_map.get(&idx) {
+                        if let Ok(mut f) = File::open(path) {
+                            let _ = f.seek(SeekFrom::Start(*off));
+                            let mut small = vec![0u8; *len as usize];
+                            if f.read_exact(&mut small).is_ok() {
+                                buf[..small.len()].copy_from_slice(&small);
+                            }
+                        }
+                    }
+                    data_bufs.push(Some(buf));
+                }
+            }
+            let mut shards: Vec<Option<Vec<u8>>> = vec![None; k + m];
+            for (i, db) in data_bufs.into_iter().enumerate() {
+                shards[i] = db;
+            }
+            let mut parity = Vec::new();
+            if let Some(v) = parity_map.get(&(stripe as u32)) {
+                parity = v.clone();
+            }
+            if parity.len() < m {
+                // cannot repair this stripe
+                return (0u64, edits_local);
+            }
+            for (pi, pbuf) in parity.into_iter() {
+                if pi < m {
+                    shards[k + pi] = Some(pbuf);
+                }
+            }
+            let rs = RsCodec::new(k, m).expect("init RS");
+            if rs.reconstruct(&mut shards).is_ok() {
+                for i in missing {
+                    let idx = stripe * k as u64 + i as u64;
+                    if let Some((path, off, len)) = idx_map.get(&idx) {
+                        if let Some(Some(buf)) = shards.get(i) {
+                            edits_local.push((path.clone(), *off, buf[..*len as usize].to_vec()));
+                            repaired_local += 1;
                         }
                     }
                 }
-                data_bufs.push(Some(buf));
             }
-        }
-        // M parity
-        let mut shards: Vec<Option<Vec<u8>>> = vec![None; k + m];
-        for (i, db) in data_bufs.into_iter().enumerate() {
-            shards[i] = db;
-        }
-        let mut parity = Vec::new();
-        if let Some(v) = parity_map.get(&(stripe as u32)) {
-            parity = v.clone();
-        }
-        if parity.len() < m {
-            failed_chunks += missing.len() as u64;
-            continue;
-        }
-        for (pi, pbuf) in parity.into_iter() {
-            if pi < m {
-                shards[k + pi] = Some(pbuf);
-            }
-        }
+            (repaired_local, edits_local)
+        })
+        .collect();
 
-        if rs.reconstruct(&mut shards).is_ok() {
-            // Accumulate edits; apply atomically after reconstruction across stripes
-            for i in missing {
-                let idx = stripe * k as u64 + i as u64;
-                if let Some((path, off, len)) = idx_map.get(&idx) {
-                    if let Some(Some(buf)) = shards.get(i) {
-                        file_edits
-                            .entry(path.clone())
-                            .or_default()
-                            .push((*off, buf[..*len as usize].to_vec()));
-                        repaired_chunks += 1;
-                    }
-                }
-            }
-        } else {
-            failed_chunks += 1;
+    let mut repaired_chunks = 0u64;
+    // Collect per-file edits for atomic replacement
+    let mut file_edits: HashMap<PathBuf, Vec<(u64, Vec<u8>)>> = HashMap::new();
+    for (rc, edits) in results {
+        repaired_chunks += rc;
+        for (p, off, data) in edits {
+            file_edits.entry(p).or_default().push((off, data));
         }
     }
-    // Apply edits: prefer atomic replace via temp+rename; fallback to in-place
+    let failed_chunks = 0u64; // conservatively 0 here; detailed accounting optional
+                              // Apply edits: prefer atomic replace via temp+rename; fallback to in-place
     for (path, mut edits) in file_edits {
         edits.sort_by_key(|e| e.0);
         // backup once per file

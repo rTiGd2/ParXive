@@ -3,6 +3,12 @@ set -euo pipefail
 
 # Simple smoke benchmark: create dataset, encode, delete a subset, repair, verify via hashcat
 
+# Refuse to run in CI environments
+if [[ "${GITHUB_ACTIONS:-}" == "true" || "${CI:-}" == "true" ]]; then
+  echo "This benchmark is designed for local runs only. Skipping in CI." >&2
+  exit 2
+fi
+
 ROOT=${1:-"_tgt/bench-dataset"}
 OUT=${2:-"_tgt/bench-out"}
 INTERLEAVE=${3:-"--interleave-files"}
@@ -25,7 +31,7 @@ BASE_HASH=$(cargo run -q -p parx-cli -- hashcat --hash-only "$ROOT")
 echo "BASE: $BASE_HASH"
 
 echo "Encoding with parity..."
-time cargo run -q -p parx-cli -- create --parity 50 --stripe-k 8 $INTERLEAVE --chunk-size 65536 --output "$OUT" --volume-sizes 16M,16M,16M "$ROOT"
+time cargo run -q -p parx-cli -- create --parity 50 --stripe-k 8 "$INTERLEAVE" --chunk-size 65536 --output "$OUT" --volume-sizes 16M,16M,16M "$ROOT"
 
 echo "Simulating damage (delete 10 small files)..."
 for i in $(seq 1 10); do rm -f "$ROOT/small/s_$i.txt"; done
@@ -34,6 +40,8 @@ echo "Repairing..."
 time cargo run -q -p parx-cli -- repair "$OUT/manifest.json" "$ROOT"
 
 echo "Post-repair hash catalogue..."
+# Exclude local backup files from dataset hash comparison
+find "$ROOT" -type f -name '*.parx.bak' -print0 2>/dev/null | xargs -0 -r rm -f --
 POST_HASH=$(cargo run -q -p parx-cli -- hashcat --hash-only "$ROOT")
 echo "POST: $POST_HASH"
 
@@ -43,9 +51,4 @@ if [[ "$BASE_HASH" == "$POST_HASH" ]]; then
 else
   echo "FAIL: Dataset hash mismatch after repair." >&2
   exit 1
-fi
-# Refuse to run in CI environments
-if [[ "${GITHUB_ACTIONS:-}" == "true" || "${CI:-}" == "true" ]]; then
-  echo "This benchmark is designed for local runs only. Skipping in CI." >&2
-  exit 2
 fi

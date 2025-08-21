@@ -20,9 +20,16 @@ I/O models
 - Async (planned): Expose async APIs where beneficial to integrate with async runtimes.
 - Data providers (planned): Trait-based streaming sources/sinks for object stores/archives to reduce memory and support custom backends.
 
-Concurrency
-- Default safe parallelism for hashing/RS (when implemented).
-- Tuning knobs for thread pools; override when co-tenant with other workloads.
+Concurrency and Performance
+- Parallel stages: encode (RS per-stripe) and verify (per-file) run in parallel.
+- Tuning knobs:
+  - Global: `--threads N` (bound Rayon thread pool size for encode/verify/repair).
+  - Niceness: `--nice <int>` best-effort process niceness via `renice`.
+  - IO niceness: `--ionice <class[:prio]>` best-effort IO priority via `ionice`.
+- Guidance:
+  - SSD/NVMe: higher `--threads` often helps.
+  - HDD: test lower `--threads` to reduce seek contention.
+  - Co-tenant systems: lower `--nice`/use `--ionice be:6` to play nice.
 
 Filesystem and portability
 - Path policy: normalize to relative paths; block traversal; opt-in symlink following with containment checks.
@@ -35,4 +42,3 @@ Exit codes and JSON output
 Examples to add in rustdoc
 - Quick start: encode + verify with minimal error mapping.
 - Optimal: builder config, interleave for full-file-loss resilience, atomic repair with backups, structured errors.
-

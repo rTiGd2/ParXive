@@ -71,7 +71,9 @@ def main():
     for m in metas:
         env_blocks.append('<pre class="mono">{}</pre>'.format(html.escape(json.dumps(m, indent=2))))
     with open(outp, 'w') as w:
-        w.write(TEMPLATE_HEAD.format(src=html.escape(src), env_blocks='\n'.join(env_blocks)))
+        # Avoid str.format on TEMPLATE_HEAD because CSS braces conflict with formatting.
+        head = TEMPLATE_HEAD.replace('{src}', html.escape(src)).replace('{env_blocks}', '\n'.join(env_blocks))
+        w.write(head)
         # Group rows by host (from corresponding meta by source) or by r['source']
         # Build source->host map
         source_to_host = {}

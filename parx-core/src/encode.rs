@@ -165,10 +165,15 @@ impl Encoder {
         }
         let m = m as usize;
         if m > 0 {
-            let rs = RsCodec::new(k, m).context("init RS")?;
+            use rayon::prelude::*;
+            use std::sync::{Arc, Mutex};
             let total_chunks = chunk_buffers.len();
             let stripes = total_chunks.div_ceil(k);
-            for s in 0..stripes {
+            // Wrap volumes for synchronized concurrent appends
+            let vols: Vec<_> =
+                files_out.into_iter().map(|pair| Arc::new(Mutex::new(pair))).collect();
+            (0..stripes).into_par_iter().for_each(|s| {
+                // Build data shards for this stripe
                 let mut data_bufs: Vec<Vec<u8>> = Vec::with_capacity(k);
                 for i in 0..k {
                     let idx = s * k + i;
@@ -187,14 +192,17 @@ impl Encoder {
                 for b in &mut parity_bufs {
                     shards.push(b.as_mut_slice());
                 }
-                rs.encode(&mut shards[..]).context("RS encode")?;
-                // Place parity shards and record entries
+                // Construct RS per task to avoid sharing concerns
+                let rs = RsCodec::new(k, m).expect("init RS");
+                rs.encode(&mut shards[..]).expect("RS encode");
+                // Append parity shards to volumes
                 for (pi, pbuf) in parity_bufs.into_iter().enumerate() {
                     let vid = pi % vol_count;
-                    let (ref mut vf, ref mut vindex) = files_out[vid];
-                    let off = vf.metadata()?.len();
-                    vf.seek(SeekFrom::End(0))?;
-                    vf.write_all(&pbuf)?;
+                    let mut guard = vols[vid].lock().expect("lock vol");
+                    let (ref mut vf, ref mut vindex) = *guard;
+                    let off = vf.metadata().expect("meta").len();
+                    vf.seek(SeekFrom::End(0)).expect("seek end");
+                    vf.write_all(&pbuf).expect("write parity");
                     vindex.push(VolumeEntry {
                         stripe: s as u32,
                         parity_idx: pi as u16,
@@ -204,7 +212,14 @@ impl Encoder {
                         outer_for_stripe: None,
                     });
                 }
+            });
+            // Unwrap volumes back
+            let mut files_out_unwrapped: Vec<(File, Vec<VolumeEntry>)> = Vec::new();
+            for v in vols {
+                let pair = Arc::try_unwrap(v).expect("unwrap arc").into_inner().expect("unlock");
+                files_out_unwrapped.push(pair);
             }
+            files_out = files_out_unwrapped;
         }
 
         // Finalize indices and headers

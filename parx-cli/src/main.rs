@@ -7,6 +7,15 @@ use std::path::{Path, PathBuf};
 #[derive(Parser, Debug)]
 #[command(name = "parx", version, about = "ParXive CLI (minimal working)")]
 struct Cli {
+    /// Number of worker threads for parallel stages (default: CPUs)
+    #[arg(long)]
+    threads: Option<usize>,
+    /// Set CPU scheduling niceness (-20..19). Positive values lower priority.
+    #[arg(long)]
+    nice: Option<i32>,
+    /// I/O niceness: class[:prio] where class=idle|be|rt and prio=0..7 (lower is higher priority)
+    #[arg(long)]
+    ionice: Option<String>,
     #[command(subcommand)]
     command: Commands,
 }
@@ -172,8 +181,56 @@ fn list_volumes(dir: &Path) -> Result<Vec<PathBuf>> {
 
 // moved to parx-core::index
 
+fn apply_priority(nice: Option<i32>, ionice: Option<String>) {
+    // CPU nice via nix (safe wrapper). Best-effort with warning on failure.
+    if let Some(n) = nice {
+        // Use `renice` to avoid unsafe FFI; best-effort and warn on failure.
+        let pid = std::process::id().to_string();
+        match std::process::Command::new("renice").args(["-n", &n.to_string(), "-p", &pid]).status()
+        {
+            Ok(st) if st.success() => {}
+            Ok(st) => eprintln!("warn: renice returned status {}", st),
+            Err(e) => eprintln!("warn: renice not applied: {}", e),
+        }
+    }
+
+    // IO nice: shell out to ionice if present; warn on failure.
+    if let Some(spec) = ionice {
+        let mut parts = spec.split(':');
+        let class_s = parts.next().unwrap_or("");
+        let prio_s = parts.next().unwrap_or("4");
+        let class = match class_s.to_ascii_lowercase().as_str() {
+            "idle" => "3",
+            "be" | "best-effort" => "2",
+            "rt" | "realtime" => "1",
+            _ => "2",
+        };
+        let prio = prio_s;
+        let pid = std::process::id().to_string();
+        match std::process::Command::new("ionice")
+            .args(["-c", class, "-n", prio, "-p", &pid])
+            .status()
+        {
+            Ok(st) if st.success() => {}
+            Ok(st) => eprintln!("warn: ionice returned status {}", st),
+            Err(e) => eprintln!("warn: ionice not applied: {}", e),
+        }
+    }
+}
+
+fn configure_threads(threads: Option<usize>) {
+    if let Some(n) = threads {
+        if let Err(e) = rayon::ThreadPoolBuilder::new().num_threads(n).build_global() {
+            eprintln!("warn: could not set global thread pool (already set?): {}", e);
+        }
+    }
+}
+
 fn run() -> Result<()> {
     let cli = Cli::parse();
+    // Apply process priority and thread config early
+    apply_priority(cli.nice, cli.ionice.clone());
+    configure_threads(cli.threads);
     match cli.command {
         Commands::OuterDecode { file } => {
             // Practical implementation: try to read and validate the trailer+index CRC

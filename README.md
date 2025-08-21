@@ -70,6 +70,12 @@ Dual-licensed under **MIT** and **Apache-2.0** — pick one or both. See `LICENS
 
 `parx` provides parity creation and diagnostics. Current subcommands:
 
+Global performance flags:
+
+- `--threads N` — bound Rayon threads used by encode/verify/repair (default: CPUs).
+- `--nice <int>` — best-effort process niceness via `renice` (warns on failure).
+- `--ionice <class[:prio]>` — best-effort IO priority via `ionice`.
+
 - `create` — Create parity volumes and manifest
   - `--parity <PCT>`: Parity percent (e.g., 35 means M ≈ ceil(K * 0.35)).
   - `--stripe-k <K>`: Data shards per stripe.
@@ -87,13 +93,13 @@ Dual-licensed under **MIT** and **Apache-2.0** — pick one or both. See `LICENS
 - `paritycheck` — Parity-aware index check; prints per-volume status.
   - `parx paritycheck .parx`
 
-- `verify` — Verify files against manifest (currently prints `OK`; Stage 2 will implement full verification).
+- `verify` — Verify files against manifest (parallel per-file).
   - `parx verify .parx/manifest.json .`
 
 - `audit` — Audit damage by stripe (currently prints `Repairable: YES`; Stage 2 will implement full audit).
   - `parx audit .parx/manifest.json .`
 
-- `repair` — Attempt repair (stub; Stage 2 will implement reconstruction).
+- `repair` — Attempt repair (parallel per-stripe reconstruction; atomic writes).
   - `parx repair .parx/manifest.json .`
 
 - `outer-decode` — Inspect a file for a ParXive index trailer and validate CRC.
