@@ -1,0 +1,35 @@
+[package]
+name = "parx-core"
+version = "0.5.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "ParX core library: erasure coding, volumes, manifest, repair, audit."
+repository = ""
+readme = false
+
+[features]
+# CUDA backend will plug in later
+cuda = []
+
+[dependencies]
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+blake3 = "1"
+memmap2 = "0.9"
+walkdir = "2"
+rayon = "1"
+globset = "0.4"
+reed-solomon-erasure = "6"
+zstd = "0.13"
+bincode = "1"
+pathdiff = "0.2"
+
+[dev-dependencies]
+proptest = "1"
+rand = "0.8"
+
+# i18n scaffolding (kept optional for now; we'll wire Fluent in step 2)
+# fluent-bundle = "0.15"
+# fluent-templates = "0.10"
+

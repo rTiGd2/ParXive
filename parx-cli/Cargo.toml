@@ -1,0 +1,37 @@
+[package]
+name = "parx-cli"
+version = "0.5.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "ParX command-line interface using parx-core."
+readme = false
+
+[dev-dependencies]
+assert_cmd = "2"
+assert_fs = "1"
+predicates = "3"
+rand = "0.8"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+globset = "0.4"
+memmap2 = "0.9"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+walkdir = "2"
+rayon = "1"
+blake3 = "1"
+zstd = "0.13"
+bincode = "1"
+pathdiff = "0.2"
+
+parx-core = { path = "../parx-core" }
+
+[features]
+cuda = ["parx-core/cuda"]
+
+[[bin]]
+name = "parx"
+path = "src/main.rs"
+

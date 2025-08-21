@@ -1,0 +1,18 @@
+# Rust build
+/target/
+**/*.rs.bk
+
+# ParX artifacts
+/.parx/
+demo_data/
+*.parxv
+*.parx
+*.parxv.tmp
+
+# Editor/OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
