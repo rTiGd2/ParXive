@@ -6,6 +6,9 @@ license = "MIT OR Apache-2.0"
 description = "ParXive command-line interface using parx-core."
 readme = false
 repository = "https://github.com/rTiGd2/ParXive"
+rust-version = "1.74"
+keywords = ["parity", "erasure-coding", "integrity", "merkle", "par2"]
+categories = ["command-line-utilities", "filesystem"]
 
 [dev-dependencies]
 assert_cmd = "2"
