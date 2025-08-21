@@ -40,8 +40,17 @@ impl Encoder {
         }
 
         // 2) Chunk and hash (collect per-file first, assign global order later)
-        struct TmpChunk { buf: Vec<u8>, len: u32, file_offset: u64, hash_hex: String }
-        struct TmpFile { rel_path: String, size: u64, chunks: Vec<TmpChunk> }
+        struct TmpChunk {
+            buf: Vec<u8>,
+            len: u32,
+            file_offset: u64,
+            hash_hex: String,
+        }
+        struct TmpFile {
+            rel_path: String,
+            size: u64,
+            chunks: Vec<TmpChunk>,
+        }
 
         let mut tmp_files: Vec<TmpFile> = Vec::new();
         let mut total_bytes: u64 = 0;
@@ -59,8 +68,14 @@ impl Encoder {
                 let to_read = std::cmp::min(remaining, cfg.chunk_size as u64) as usize;
                 let mut buf = vec![0u8; cfg.chunk_size];
                 let readn = f.read(&mut buf[..to_read])?;
-                if readn == 0 { break; }
-                if readn < cfg.chunk_size { for b in &mut buf[readn..] { *b = 0; } }
+                if readn == 0 {
+                    break;
+                }
+                if readn < cfg.chunk_size {
+                    for b in &mut buf[readn..] {
+                        *b = 0;
+                    }
+                }
                 let hash_hex = blake3::hash(&buf).to_hex().to_string();
                 chunks.push(TmpChunk { buf, len: readn as u32, file_offset, hash_hex });
                 remaining -= readn as u64;
@@ -76,14 +91,21 @@ impl Encoder {
             loop {
                 let mut appended = false;
                 for (fi, tf) in tmp_files.iter().enumerate() {
-                    if rr < tf.chunks.len() { order.push((fi, rr)); appended = true; }
+                    if rr < tf.chunks.len() {
+                        order.push((fi, rr));
+                        appended = true;
+                    }
                 }
-                if !appended { break; }
+                if !appended {
+                    break;
+                }
                 rr += 1;
             }
         } else {
             for (fi, tf) in tmp_files.iter().enumerate() {
-                for ci in 0..tf.chunks.len() { order.push((fi, ci)); }
+                for ci in 0..tf.chunks.len() {
+                    order.push((fi, ci));
+                }
             }
         }
 
@@ -92,14 +114,23 @@ impl Encoder {
         let mut all_chunk_hashes = Vec::with_capacity(order.len());
         let mut file_entries: Vec<FileEntry> = tmp_files
             .iter()
-            .map(|tf| FileEntry { rel_path: tf.rel_path.clone(), size: tf.size, chunks: Vec::new() })
+            .map(|tf| FileEntry {
+                rel_path: tf.rel_path.clone(),
+                size: tf.size,
+                chunks: Vec::new(),
+            })
             .collect();
         let mut next_idx: u64 = 0;
         for (fi, ci) in order {
             let tc = &tmp_files[fi].chunks[ci];
             all_chunk_hashes.push(blake3::hash(&tc.buf));
             chunk_buffers.push(tc.buf.clone());
-            file_entries[fi].chunks.push(ChunkRef { idx: next_idx, file_offset: tc.file_offset, len: tc.len, hash_hex: tc.hash_hex.clone() });
+            file_entries[fi].chunks.push(ChunkRef {
+                idx: next_idx,
+                file_offset: tc.file_offset,
+                len: tc.len,
+                hash_hex: tc.hash_hex.clone(),
+            });
             next_idx += 1;
         }
 
