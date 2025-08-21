@@ -15,11 +15,10 @@ pub struct RepairReport {
     pub failed_chunks: u64,
 }
 
-fn collect_parity_shards(
-    parity_dir: &Path,
-    chunk_size: usize,
-) -> Result<HashMap<u32, Vec<Vec<u8>>>> {
-    let mut map: HashMap<u32, Vec<Vec<u8>>> = HashMap::new();
+type ParityMap = HashMap<u32, Vec<(usize, Vec<u8>)>>;
+
+fn collect_parity_shards(parity_dir: &Path, chunk_size: usize) -> Result<ParityMap> {
+    let mut map: ParityMap = HashMap::new();
     if !parity_dir.exists() {
         return Ok(map);
     }
@@ -36,7 +35,7 @@ fn collect_parity_shards(
                 if buf.len() < chunk_size {
                     buf.resize(chunk_size, 0);
                 }
-                map.entry(e.stripe).or_default().push(buf);
+                map.entry(e.stripe).or_default().push((e.parity_idx as usize, buf));
             }
         }
     }
@@ -44,6 +43,14 @@ fn collect_parity_shards(
 }
 
 pub fn repair(manifest_path: &Path, root: &Path) -> Result<RepairReport> {
+    repair_with_policy(manifest_path, root, PathPolicy::default())
+}
+
+pub fn repair_with_policy(
+    manifest_path: &Path,
+    root: &Path,
+    policy: PathPolicy,
+) -> Result<RepairReport> {
     let mf: Manifest =
         serde_json::from_reader(File::open(manifest_path)?).context("read manifest.json")?;
     // Global lock in parity dir to avoid concurrent repairs
@@ -59,11 +66,13 @@ pub fn repair(manifest_path: &Path, root: &Path) -> Result<RepairReport> {
     let rs = RsCodec::new(k, m).context("init RS")?;
     let parity_map = collect_parity_shards(Path::new(&mf.parity_dir), mf.chunk_size)?;
 
-    // Build map idx -> (safe_path, offset, len)
+    // Build map idx -> (safe_path, offset, len) and record target file sizes
     let mut idx_map: HashMap<u64, (PathBuf, u64, u32)> = HashMap::new();
+    let mut file_sizes: HashMap<PathBuf, u64> = HashMap::new();
     for fe in &mf.files {
-        let safe = validate_path(root, Path::new(&fe.rel_path), PathPolicy::default())
+        let safe = validate_path(root, Path::new(&fe.rel_path), policy)
             .with_context(|| format!("validate path {:?}", fe.rel_path))?;
+        file_sizes.insert(safe.clone(), fe.size);
         for ch in &fe.chunks {
             idx_map.insert(ch.idx, (safe.clone(), ch.file_offset, ch.len));
         }
@@ -93,6 +102,11 @@ pub fn repair(manifest_path: &Path, root: &Path) -> Result<RepairReport> {
                 let data_i = (idx % k as u64) as usize;
                 to_repair.entry(stripe).or_default().push(data_i);
             }
+        } else {
+            // File missing: mark this data shard as missing for reconstruction
+            let stripe = idx / k as u64;
+            let data_i = (idx % k as u64) as usize;
+            to_repair.entry(stripe).or_default().push(data_i);
         }
     }
 
@@ -122,8 +136,10 @@ pub fn repair(manifest_path: &Path, root: &Path) -> Result<RepairReport> {
             }
         }
         // M parity
-        let mut shards: Vec<Option<Vec<u8>>> = Vec::with_capacity(k + m);
-        shards.extend(data_bufs);
+        let mut shards: Vec<Option<Vec<u8>>> = vec![None; k + m];
+        for (i, db) in data_bufs.into_iter().enumerate() {
+            shards[i] = db;
+        }
         let mut parity = Vec::new();
         if let Some(v) = parity_map.get(&(stripe as u32)) {
             parity = v.clone();
@@ -132,8 +148,10 @@ pub fn repair(manifest_path: &Path, root: &Path) -> Result<RepairReport> {
             failed_chunks += missing.len() as u64;
             continue;
         }
-        for pbuf in parity.iter().take(m) {
-            shards.push(Some(pbuf.clone()));
+        for (pi, pbuf) in parity.into_iter() {
+            if pi < m {
+                shards[k + pi] = Some(pbuf);
+            }
         }
 
         if rs.reconstruct(&mut shards).is_ok() {
@@ -166,13 +184,26 @@ pub fn repair(manifest_path: &Path, root: &Path) -> Result<RepairReport> {
         let parent = path.parent().unwrap_or(Path::new("."));
         let tmp = parent.join(format!("{}.parx.tmp", path.file_name().unwrap().to_string_lossy()));
         let atomic_res = (|| -> Result<()> {
-            let mut orig = std::fs::read(&path).with_context(|| format!("read {:?}", path))?;
+            let mut orig = match std::fs::read(&path) {
+                Ok(b) => b,
+                Err(_) => {
+                    // Recreate missing file buffer sized to manifest size (or grow on writes)
+                    let sz = *file_sizes.get(&path).unwrap_or(&0u64) as usize;
+                    vec![0u8; sz]
+                }
+            };
             for (off, data) in &edits {
                 let off = *off as usize;
                 if off + data.len() > orig.len() {
                     orig.resize(off + data.len(), 0);
                 }
                 orig[off..off + data.len()].copy_from_slice(data);
+            }
+            // Truncate back to manifest-declared file size if known
+            if let Some(sz) = file_sizes.get(&path) {
+                if orig.len() > *sz as usize {
+                    orig.truncate(*sz as usize);
+                }
             }
             {
                 let mut tf = std::fs::OpenOptions::new()
@@ -188,7 +219,13 @@ pub fn repair(manifest_path: &Path, root: &Path) -> Result<RepairReport> {
         })();
         if atomic_res.is_err() {
             // Fallback to in-place with advisory lock
-            if let Ok(mut f) = std::fs::OpenOptions::new().read(true).write(true).open(&path) {
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .read(true)
+                .write(true)
+                .truncate(false)
+                .open(&path)
+            {
                 let _ = f.try_lock_exclusive();
                 for (off, data) in &edits {
                     if f.seek(SeekFrom::Start(*off)).is_ok() {
