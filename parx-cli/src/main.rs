@@ -33,6 +33,9 @@ enum Commands {
         stripe_k: usize,
         #[arg(long="chunk-size", default_value_t=1<<20)]
         chunk_size: usize,
+        /// Interleave chunks round-robin across files for resilience to full-file loss
+        #[arg(long = "interleave-files", default_value_t = false)]
+        interleave_files: bool,
         #[arg(long, default_value = ".parx")]
         output: PathBuf,
         /// Comma-separated sizes like 1M,1M,1M (just determines how many volumes & mock entry counts)
@@ -189,6 +192,7 @@ fn main() -> Result<()> {
             parity,
             stripe_k,
             chunk_size,
+            interleave_files,
             output,
             volume_sizes,
             outer_group,
@@ -205,6 +209,7 @@ fn main() -> Result<()> {
                 volumes: sizes.len(),
                 outer_group,
                 outer_parity,
+                interleave_files,
             };
             let _manifest = parx_core::encode::Encoder::encode(&input, &output, &cfg)?;
             // Adjust manifest paths to be relative to current working directory

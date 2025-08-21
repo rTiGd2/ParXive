@@ -20,6 +20,7 @@ fn encode_small_dataset_and_verify_manifest_merkle() {
         volumes: 2,
         outer_group: 0,
         outer_parity: 0,
+        interleave_files: false,
     };
     let manifest = Encoder::encode(&root, &out, &cfg).unwrap();
 
