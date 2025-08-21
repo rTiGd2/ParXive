@@ -20,3 +20,7 @@ Thumbs.db
 
 # Internal planning (local only)
 /internal/
+
+# Local build caches/output
+/_tgt/
+big.bin
