@@ -1,0 +1,87 @@
+name: Branch Protection Guard
+
+on:
+  push:
+    branches: [ main ]
+  schedule:
+    - cron: '19 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check branch protection and open issue on drift
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const branch = 'main';
+            const desiredChecks = ['fmt','clippy','tests','cargo-deny','Analyze (rust)'];
+            const desiredReviews = 1;
+            const desiredAdmins = true;
+            const desiredLinearHistory = true;
+
+            async function getProtection() {
+              try {
+                const res = await github.request('GET /repos/{owner}/{repo}/branches/{branch}/protection', { owner, repo, branch });
+                return res.data;
+              } catch (e) {
+                core.warning('Protection GET failed: ' + e.message);
+                return null;
+              }
+            }
+            async function getSignatures() {
+              try {
+                const res = await github.request('GET /repos/{owner}/{repo}/branches/{branch}/protection/required_signatures', { owner, repo, branch });
+                return !!res.data.enabled;
+              } catch (e) {
+                core.warning('Signature GET failed: ' + e.message);
+                return false;
+              }
+            }
+
+            const prot = await getProtection();
+            const signaturesEnabled = await getSignatures();
+            const contexts = prot?.required_status_checks?.contexts || [];
+            const reviews = prot?.required_pull_request_reviews?.required_approving_review_count ?? 0;
+            const admins = prot?.enforce_admins?.enabled ?? false;
+            const linear = prot?.required_linear_history?.enabled ?? false;
+
+            const miss = [];
+            const haveSet = new Set(contexts);
+            const wantSet = new Set(desiredChecks);
+            for (const c of desiredChecks) if (!haveSet.has(c)) miss.push(`missing check: ${c}`);
+            for (const c of contexts) if (!wantSet.has(c)) miss.push(`extra check: ${c}`);
+            if (reviews !== desiredReviews) miss.push(`reviews=${reviews} != ${desiredReviews}`);
+            if (admins !== desiredAdmins) miss.push(`enforce_admins=${admins} != ${desiredAdmins}`);
+            if (linear !== desiredLinearHistory) miss.push(`linear_history=${linear} != ${desiredLinearHistory}`);
+            if (!signaturesEnabled) miss.push('required_signatures is disabled');
+
+            if (miss.length) {
+              core.setFailed('Branch protection drift: ' + miss.join('; '));
+              const title = 'Branch protection drift detected';
+              const body = `Detected branch protection drift on ${branch}.\n\n` +
+                `Desired checks: ${JSON.stringify(desiredChecks)}\n` +
+                `Actual checks: ${JSON.stringify(contexts)}\n` +
+                `Desired reviews: ${desiredReviews}, actual: ${reviews}\n` +
+                `Enforce admins desired ${desiredAdmins}, actual ${admins}\n` +
+                `Linear history desired ${desiredLinearHistory}, actual ${linear}\n` +
+                `Signatures required: true, actual ${signaturesEnabled}\n\n` +
+                `To restore: run scripts/update_required_checks.sh and enable signatures:` +
+                `\n  scripts/update_required_checks.sh\n  scripts/enable_required_signatures.sh\n`;
+              const { data: issues } = await github.request('GET /repos/{owner}/{repo}/issues', { owner, repo, state: 'open', per_page: 100 });
+              const existing = issues.find(i => i.title === title);
+              if (existing) {
+                await github.request('PATCH /repos/{owner}/{repo}/issues/{issue_number}', { owner, repo, issue_number: existing.number, body });
+              } else {
+                await github.request('POST /repos/{owner}/{repo}/issues', { owner, repo, title, body });
+              }
+            } else {
+              core.info('Branch protection matches desired configuration.');
+            }

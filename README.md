@@ -24,6 +24,13 @@ cargo test --workspace
 
 ```bash
 # Create parity (35% over stripes of 64, 1 MiB chunks)
+parx create \\
+  --parity 35 \\
+  --stripe-k 64 \\
+  --chunk-size 1048576 \\
+  --output .parx \\
+  --volume-sizes 32M,32M,32M \\
+  ./demo_data
 
 # Verify source files against manifest
 ./target/release/parx verify .parx/manifest.json .
@@ -34,6 +41,8 @@ cargo test --workspace
 # Attempt repair (uses per-stripe RS + parity entries in volumes)
 ./target/release/parx repair .parx/manifest.json .
 ```
+
+- Interleaving across files: add `--interleave-files` to distribute chunks round‑robin across files per stripe. This increases resilience to full-file loss by ensuring each stripe spans multiple input files.
 
 ## Why ParXive (vs PAR2)
 
@@ -51,6 +60,7 @@ cargo test --workspace
 - Outer RS (parity-of-parity) decode path.
 - Optional CUDA batched RS kernels for big sets.
 - PAR2 interop (reader/writer) as a separate crate.
+- Benchmark suite: unbiased, scientific comparison of ParXive vs current popular PAR2 implementations (speed and capabilities). Include our future Rust+GPU par1/par2 library, and also compare our par2 vs ParXive. Produce an HTML and/or PDF report with clear visuals and plain-language explanations, suitable for non-experts.
 
 ## License
 
