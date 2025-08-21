@@ -1,6 +1,9 @@
 # ParXive (formerly ParX)
 
 [![CI](https://github.com/rTiGd2/ParXive/actions/workflows/ci.yml/badge.svg)](https://github.com/rTiGd2/ParXive/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/rTiGd2/ParXive/actions/workflows/codeql.yml/badge.svg)](https://github.com/rTiGd2/ParXive/actions/workflows/codeql.yml)
+[![License](https://img.shields.io/github/license/rTiGd2/ParXive)](LICENSE-MIT)
+[![Release](https://img.shields.io/github/v/release/rTiGd2/ParXive?include_prereleases&sort=semver)](https://github.com/rTiGd2/ParXive/releases)
 
 Reed–Solomon parity + integrity (BLAKE3 + Merkle) for large file sets.  
 Fast CPU path, robust volume format, and a clean library/CLI split.
