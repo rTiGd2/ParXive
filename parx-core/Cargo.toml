@@ -24,6 +24,8 @@ reed-solomon-erasure = "6"
 zstd = "0.13"
 bincode = "1"
 pathdiff = "0.2"
+fluent-bundle = "0.15"
+unic-langid = "0.9"
 
 [dev-dependencies]
 proptest = "1"
