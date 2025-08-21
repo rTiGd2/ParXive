@@ -1,4 +1,3 @@
-
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -15,8 +14,8 @@ pub struct VolumeHeaderBin {
 /// V2 entry (PARXBV2): adds `outer_for_stripe` to indicate outer RS shard.
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct VolumeEntry {
-    pub stripe: u32,                  // inner parity: stripe index; outer parity: u32::MAX
-    pub parity_idx: u16,              // for inner: 0..m-1; for outer: 0..outer_m-1
+    pub stripe: u32,     // inner parity: stripe index; outer parity: u32::MAX
+    pub parity_idx: u16, // for inner: 0..m-1; for outer: 0..outer_m-1
     pub offset: u64,
     pub len: u32,
     pub hash: Option<[u8; 32]>,

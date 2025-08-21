@@ -17,3 +17,6 @@ Thumbs.db
 *.swp
 
 *:Zone.Identifier
+
+# Internal planning (local only)
+/internal/

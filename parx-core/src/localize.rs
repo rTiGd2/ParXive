@@ -1,4 +1,3 @@
-
 use fluent_bundle::{FluentArgs, FluentBundle, FluentResource, FluentValue};
 use unic_langid::LanguageIdentifier;
 
@@ -19,14 +18,12 @@ impl FluentLoc {
             _ => include_str!("../i18n/en-GB.ftl"),
         };
 
-        let res = FluentResource::try_new(ftl_src.to_owned())
-            .expect("invalid FTL resource (en-GB.ftl)");
+        let res =
+            FluentResource::try_new(ftl_src.to_owned()).expect("invalid FTL resource (en-GB.ftl)");
 
         // Use the non-concurrent bundle constructor for stable.
         let mut bundle = FluentBundle::new(vec![langid]);
-        bundle
-            .add_resource(res)
-            .expect("failed to add FTL resource");
+        bundle.add_resource(res).expect("failed to add FTL resource");
         Self { bundle }
     }
 
@@ -46,10 +43,7 @@ impl FluentLoc {
         }
 
         let mut errs = vec![];
-        let s = self
-            .bundle
-            .format_pattern(pattern, Some(&fa), &mut errs)
-            .to_string();
+        let s = self.bundle.format_pattern(pattern, Some(&fa), &mut errs).to_string();
 
         if errs.is_empty() {
             s

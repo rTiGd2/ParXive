@@ -26,6 +26,7 @@ zstd = "0.13"
 bincode = "1"
 pathdiff = "0.2"
 crc32fast = "1.3"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
 parx-core = { path = "../parx-core" }
 
@@ -35,4 +36,3 @@ cuda = ["parx-core/cuda"]
 [[bin]]
 name = "parx"
 path = "src/main.rs"
-
