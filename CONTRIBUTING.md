@@ -47,7 +47,13 @@ cargo deny check     # licenses / bans / sources policy
 
 - Follow Rust's default `rustfmt` style.
 - Prefer small, clear functions; avoid unnecessary unsafe.
-- Use `?` for error propagation and `anyhow`/`thiserror` where appropriate.
+- Use `?` for error propagation. In binaries, `anyhow` is fine; in library crates, prefer `thiserror` and typed errors.
+
+## Developer references
+
+- Developer Guide: `docs/dev-guide.md` — integration patterns and rationale, including error handling choices and interleaving guidance.
+- Exit Codes: `docs/exit-codes.md` — stable CLI exit code mapping (sysexits-inspired).
+- Error policy (libraries): see `internal/errors.md` for typed error design and best practices.
 
 ## Licensing
 
@@ -66,3 +72,8 @@ You can include the following in your files:
 
 Please do not open a public issue for security-sensitive reports. Instead,
 contact the maintainers privately (add a SECURITY.md later if preferred).
+
+## Hooks
+
+- We use a pre-push hook to run fmt, clippy -D warnings, and tests. Enable hooks with:
+  - `git config core.hooksPath .githooks`

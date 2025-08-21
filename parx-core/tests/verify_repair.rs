@@ -21,6 +21,7 @@ fn verify_then_repair_simple_corruption() {
         volumes: 2,
         outer_group: 0,
         outer_parity: 0,
+        interleave_files: false,
     };
     let manifest = Encoder::encode(&root, &out, &cfg).unwrap();
 

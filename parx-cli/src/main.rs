@@ -33,6 +33,9 @@ enum Commands {
         stripe_k: usize,
         #[arg(long="chunk-size", default_value_t=1<<20)]
         chunk_size: usize,
+        /// Interleave chunks round-robin across files for resilience to full-file loss
+        #[arg(long = "interleave-files", default_value_t = false)]
+        interleave_files: bool,
         #[arg(long, default_value = ".parx")]
         output: PathBuf,
         /// Comma-separated sizes like 1M,1M,1M (just determines how many volumes & mock entry counts)
@@ -157,7 +160,7 @@ fn list_volumes(dir: &Path) -> Result<Vec<PathBuf>> {
 
 // moved to parx-core::index
 
-fn main() -> Result<()> {
+fn run() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Commands::OuterDecode { file } => {
@@ -189,6 +192,7 @@ fn main() -> Result<()> {
             parity,
             stripe_k,
             chunk_size,
+            interleave_files,
             output,
             volume_sizes,
             outer_group,
@@ -205,6 +209,7 @@ fn main() -> Result<()> {
                 volumes: sizes.len(),
                 outer_group,
                 outer_parity,
+                interleave_files,
             };
             let _manifest = parx_core::encode::Encoder::encode(&input, &output, &cfg)?;
             // Adjust manifest paths to be relative to current working directory
@@ -367,4 +372,33 @@ fn main() -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn exit_code_for_error(e: &anyhow::Error) -> i32 {
+    // POSIX-ish mapping, inspired by sysexits.h where feasible
+    // EX_OK=0, EX_USAGE=64, EX_DATAERR=65, EX_NOINPUT=66, EX_CANTCREAT=73, EX_IOERR=74, EX_CONFIG=78, EX_NOPERM=77
+    if let Some(ioe) = e.downcast_ref::<std::io::Error>() {
+        use std::io::ErrorKind as K;
+        return match ioe.kind() {
+            K::NotFound => 66,                                                   // EX_NOINPUT
+            K::PermissionDenied => 77,                                           // EX_NOPERM
+            K::AlreadyExists => 73, // EX_CANTCREAT (for create paths)
+            K::InvalidData => 65,   // EX_DATAERR
+            K::BrokenPipe | K::UnexpectedEof | K::WriteZero | K::TimedOut => 74, // EX_IOERR
+            _ => 74,                // EX_IOERR for other I/O
+        };
+    }
+    if e.downcast_ref::<serde_json::Error>().is_some() {
+        return 65; // EX_DATAERR
+    }
+    // Default: generic software error
+    70 // EX_SOFTWARE
+}
+
+fn main() {
+    if let Err(e) = run() {
+        // Print a concise error; leave detailed context to logs in the future
+        eprintln!("error: {:#}", e);
+        std::process::exit(exit_code_for_error(&e));
+    }
 }

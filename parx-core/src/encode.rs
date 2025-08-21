@@ -15,6 +15,7 @@ pub struct EncoderConfig {
     pub volumes: usize,
     pub outer_group: usize,
     pub outer_parity: usize,
+    pub interleave_files: bool,
 }
 
 pub struct Encoder;
@@ -38,17 +39,26 @@ impl Encoder {
             files.push(p.to_path_buf());
         }
 
-        // 2) Chunk and hash
-        let mut file_entries = Vec::new();
-        let mut all_chunk_hashes = Vec::new();
-        let mut chunk_buffers: Vec<Vec<u8>> = Vec::new();
+        // 2) Chunk and hash (collect per-file first, assign global order later)
+        struct TmpChunk {
+            buf: Vec<u8>,
+            len: u32,
+            file_offset: u64,
+            hash_hex: String,
+        }
+        struct TmpFile {
+            rel_path: String,
+            size: u64,
+            chunks: Vec<TmpChunk>,
+        }
+
+        let mut tmp_files: Vec<TmpFile> = Vec::new();
         let mut total_bytes: u64 = 0;
-        let mut next_chunk_idx: u64 = 0;
-        for path in files {
-            let rel_path = pathdiff::diff_paths(&path, root)
+        for path in &files {
+            let rel_path = pathdiff::diff_paths(path, root)
                 .unwrap_or_else(|| path.file_name().unwrap().into());
             let rel_path = rel_path.to_string_lossy().to_string();
-            let mut f = File::open(&path).with_context(|| format!("open {:?}", path))?;
+            let mut f = File::open(path).with_context(|| format!("open {:?}", path))?;
             let size = f.metadata()?.len();
             total_bytes += size;
             let mut remaining = size;
@@ -66,24 +76,65 @@ impl Encoder {
                         *b = 0;
                     }
                 }
-                let h = blake3::hash(&buf);
-                let hash_hex = h.to_hex().to_string();
-                all_chunk_hashes.push(h);
-                chunks.push(ChunkRef {
-                    idx: next_chunk_idx,
-                    file_offset,
-                    len: readn as u32,
-                    hash_hex,
-                });
-                chunk_buffers.push(buf);
-                next_chunk_idx += 1;
+                let hash_hex = blake3::hash(&buf).to_hex().to_string();
+                chunks.push(TmpChunk { buf, len: readn as u32, file_offset, hash_hex });
                 remaining -= readn as u64;
                 file_offset += readn as u64;
             }
-            file_entries.push(FileEntry { rel_path, size, chunks });
+            tmp_files.push(TmpFile { rel_path, size, chunks });
         }
 
-        // 3) Merkle root
+        // Assign global ordering: sequential per file or round-robin across files
+        let mut order: Vec<(usize, usize)> = Vec::new(); // (file_idx, local_chunk_idx)
+        if cfg.interleave_files {
+            let mut rr = 0usize;
+            loop {
+                let mut appended = false;
+                for (fi, tf) in tmp_files.iter().enumerate() {
+                    if rr < tf.chunks.len() {
+                        order.push((fi, rr));
+                        appended = true;
+                    }
+                }
+                if !appended {
+                    break;
+                }
+                rr += 1;
+            }
+        } else {
+            for (fi, tf) in tmp_files.iter().enumerate() {
+                for ci in 0..tf.chunks.len() {
+                    order.push((fi, ci));
+                }
+            }
+        }
+
+        // Build final buffers and manifest file entries with global idx, and Merkle list
+        let mut chunk_buffers: Vec<Vec<u8>> = Vec::with_capacity(order.len());
+        let mut all_chunk_hashes = Vec::with_capacity(order.len());
+        let mut file_entries: Vec<FileEntry> = tmp_files
+            .iter()
+            .map(|tf| FileEntry {
+                rel_path: tf.rel_path.clone(),
+                size: tf.size,
+                chunks: Vec::new(),
+            })
+            .collect();
+        let mut next_idx: u64 = 0;
+        for (fi, ci) in order {
+            let tc = &tmp_files[fi].chunks[ci];
+            all_chunk_hashes.push(blake3::hash(&tc.buf));
+            chunk_buffers.push(tc.buf.clone());
+            file_entries[fi].chunks.push(ChunkRef {
+                idx: next_idx,
+                file_offset: tc.file_offset,
+                len: tc.len,
+                hash_hex: tc.hash_hex.clone(),
+            });
+            next_idx += 1;
+        }
+
+        // 3) Merkle root over final order
         let merkle_root_hex = merkle::root(&all_chunk_hashes).to_hex().to_string();
 
         // 4) Compute RS parity per stripe and write volumes (round-robin placement)
@@ -169,7 +220,7 @@ impl Encoder {
             stripe_k: cfg.stripe_k,
             parity_pct: cfg.parity_pct,
             total_bytes,
-            total_chunks: next_chunk_idx,
+            total_chunks: next_idx,
             files: file_entries,
             merkle_root_hex,
             parity_dir: output.to_string_lossy().to_string(),
