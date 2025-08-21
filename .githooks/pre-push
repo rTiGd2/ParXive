@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "pre-push: verifying workspace (fmt, clippy, tests)"
+
+if ! command -v cargo >/dev/null 2>&1; then
+  echo "cargo not found; skipping checks" >&2
+  exit 0
+fi
+
+# Format check
+cargo fmt --all -- --check
+
+# Clippy (deny warnings)
+cargo clippy --workspace --all-targets -- -D warnings
+
+# Tests (workspace)
+cargo test --workspace
+
+echo "pre-push: all checks passed"
