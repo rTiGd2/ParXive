@@ -1,5 +1,7 @@
 # ParXive (formerly ParX)
 
+[![CI](https://github.com/rTiGd2/ParXive/actions/workflows/ci.yml/badge.svg)](https://github.com/rTiGd2/ParXive/actions/workflows/ci.yml)
+
 Reed–Solomon parity + integrity (BLAKE3 + Merkle) for large file sets.  
 Fast CPU path, robust volume format, and a clean library/CLI split.
 
