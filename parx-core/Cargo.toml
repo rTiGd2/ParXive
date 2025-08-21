@@ -6,6 +6,9 @@ license = "MIT OR Apache-2.0"
 description = "ParXive core library: erasure coding, volumes, manifest, repair, audit."
 repository = "https://github.com/rTiGd2/ParXive"
 readme = false
+rust-version = "1.74"
+keywords = ["parity", "erasure-coding", "integrity", "merkle", "par2"]
+categories = ["command-line-utilities", "filesystem"]
 
 [features]
 # CUDA backend (optional)
