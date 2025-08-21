@@ -65,13 +65,6 @@ parx create \\
 ## License
 
 Dual-licensed under **MIT** and **Apache-2.0** — pick one or both. See `LICENSE-MIT` and `LICENSE-APACHE`.
-./target/release/parx create \
-  --parity 35 \
-  --stripe-k 64 \
-  --chunk-size 1048576 \
-  --output .parx \
-  --volume-sizes 32M,32M,32M \
-  demo_data
 
 ## Usage
 
@@ -147,6 +140,9 @@ Notes
 ## Developers
 
 ParXive is library-first. The `parx-core` crate exposes a clean API for encoding now, and will expose verify/audit/repair in Stage 2.
+
+- Developer Guide: see `docs/dev-guide.md` for integration options (typed errors vs rich wrappers, interleaving guidance, I/O models) and rationale for recommended paths.
+- Exit Codes: see `docs/exit-codes.md` for a stable mapping suitable for automation.
 
 ### Library usage (Rust)
 

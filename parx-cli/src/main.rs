@@ -380,12 +380,12 @@ fn exit_code_for_error(e: &anyhow::Error) -> i32 {
     if let Some(ioe) = e.downcast_ref::<std::io::Error>() {
         use std::io::ErrorKind as K;
         return match ioe.kind() {
-            K::NotFound => 66,         // EX_NOINPUT
-            K::PermissionDenied => 77, // EX_NOPERM
-            K::AlreadyExists => 73,    // EX_CANTCREAT (for create paths)
-            K::InvalidData => 65,      // EX_DATAERR
+            K::NotFound => 66,                                                   // EX_NOINPUT
+            K::PermissionDenied => 77,                                           // EX_NOPERM
+            K::AlreadyExists => 73, // EX_CANTCREAT (for create paths)
+            K::InvalidData => 65,   // EX_DATAERR
             K::BrokenPipe | K::UnexpectedEof | K::WriteZero | K::TimedOut => 74, // EX_IOERR
-            _ => 74,                   // EX_IOERR for other I/O
+            _ => 74,                // EX_IOERR for other I/O
         };
     }
     if e.downcast_ref::<serde_json::Error>().is_some() {
