@@ -44,6 +44,14 @@ fn collect_parity_shards(
 }
 
 pub fn repair(manifest_path: &Path, root: &Path) -> Result<RepairReport> {
+    repair_with_policy(manifest_path, root, PathPolicy::default())
+}
+
+pub fn repair_with_policy(
+    manifest_path: &Path,
+    root: &Path,
+    policy: PathPolicy,
+) -> Result<RepairReport> {
     let mf: Manifest =
         serde_json::from_reader(File::open(manifest_path)?).context("read manifest.json")?;
     // Global lock in parity dir to avoid concurrent repairs
@@ -62,7 +70,7 @@ pub fn repair(manifest_path: &Path, root: &Path) -> Result<RepairReport> {
     // Build map idx -> (safe_path, offset, len)
     let mut idx_map: HashMap<u64, (PathBuf, u64, u32)> = HashMap::new();
     for fe in &mf.files {
-        let safe = validate_path(root, Path::new(&fe.rel_path), PathPolicy::default())
+        let safe = validate_path(root, Path::new(&fe.rel_path), policy)
             .with_context(|| format!("validate path {:?}", fe.rel_path))?;
         for ch in &fe.chunks {
             idx_map.insert(ch.idx, (safe.clone(), ch.file_offset, ch.len));

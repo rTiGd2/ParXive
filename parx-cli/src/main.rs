@@ -332,8 +332,9 @@ fn run() -> Result<()> {
             }
         }
 
-        Commands::Repair { json, follow_symlinks: _, manifest, root } => {
-            let rr = parx_core::repair::repair(&manifest, &root)?;
+        Commands::Repair { json, follow_symlinks, manifest, root } => {
+            let policy = parx_core::path_safety::PathPolicy { follow_symlinks };
+            let rr = parx_core::repair::repair_with_policy(&manifest, &root, policy)?;
             if json {
                 println!("{}", serde_json::to_string(&rr)?);
             }
