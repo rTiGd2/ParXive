@@ -196,11 +196,11 @@ pub fn repair(manifest_path: &Path, root: &Path) -> Result<RepairReport> {
                     }
                 }
                 let _ = f.sync_all();
-                let _ = f.unlock();
+                // unlocking happens on drop; avoid std::File::unlock (MSRV >=1.89)
             }
         }
     }
 
-    let _ = lock_file.unlock();
+    // Release global lock on drop
     Ok(RepairReport { repaired_chunks, failed_chunks })
 }
