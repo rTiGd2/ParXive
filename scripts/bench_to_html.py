@@ -16,10 +16,15 @@ TEMPLATE_HEAD = """
  .small{font-size:12px;color:#555}
 </style>
 <h1>ParXive Bench Summary</h1>
-<div class="small">Source: {src}</div>
-<h2>Environment</h2>
-<pre class="mono">{env}</pre>
-<h2>Results</h2>
+<div class="small">Input: {src}</div>
+<h2>Environments</h2>
+<div>
+{env_blocks}
+</div>
+"""
+
+TEMPLATE_HOST_HEAD = """
+<h2>Results: {host}</h2>
 <table>
 <thead><tr>
  <th>Scenario</th><th>GPU</th><th>K</th><th>Parity%</th><th>Chunk</th><th>Interleave</th>
@@ -28,7 +33,7 @@ TEMPLATE_HEAD = """
 <tbody>
 """
 
-TEMPLATE_FOOT = """
+TEMPLATE_TABLE_FOOT = """
 </tbody>
 </table>
 """
@@ -45,7 +50,7 @@ def main():
         return 2
     src = sys.argv[1]
     outp = sys.argv[2]
-    env = {}
+    metas = []
     rows = []
     with open(src) as f:
         for line in f:
@@ -58,33 +63,50 @@ def main():
                 continue
             t = obj.get('type')
             if t == 'meta':
-                env = obj
+                metas.append(obj)
             elif t == 'result' or t is None:
                 rows.append(obj)
-    env_text = json.dumps(env, indent=2)
+    # Build env blocks
+    env_blocks = []
+    for m in metas:
+        env_blocks.append('<pre class="mono">{}</pre>'.format(html.escape(json.dumps(m, indent=2))))
     with open(outp, 'w') as w:
-        w.write(TEMPLATE_HEAD.format(src=html.escape(src), env=html.escape(env_text)))
+        w.write(TEMPLATE_HEAD.format(src=html.escape(src), env_blocks='\n'.join(env_blocks)))
+        # Group rows by host (from corresponding meta by source) or by r['source']
+        # Build source->host map
+        source_to_host = {}
+        for m in metas:
+            srcname = m.get('source', '')
+            host = m.get('host', srcname)
+            source_to_host[srcname] = host
+        # Group
+        groups = {}
         for r in rows:
-            ok = r.get('ok')
-            w.write('<tr>')
-            w.write('<td>{}</td>'.format(html.escape(str(r.get('scenario','')))))
-            w.write('<td>{}</td>'.format(html.escape(str(r.get('gpu','')))))
-            w.write('<td class="mono">{}</td>'.format(html.escape(str(r.get('k','')))))
-            w.write('<td class="mono">{}</td>'.format(html.escape(str(r.get('parity_pct','')))))
-            w.write('<td class="mono">{}</td>'.format(html.escape(str(r.get('chunk','')))))
-            w.write('<td>{}</td>'.format(html.escape(str(r.get('interleave','')))))
-            w.write('<td class="mono">{}</td>'.format(human_mib(r.get('total_bytes',0))))
-            w.write('<td class="mono">{}</td>'.format(human_mib(r.get('parity_bytes',0))))
-            w.write('<td class="mono">{}</td>'.format(html.escape(str(r.get('encode_ms','')))))
-            w.write('<td class="mono">{}</td>'.format(html.escape(str(r.get('repair_ms','')))))
-            w.write('<td class="mono">{}</td>'.format(html.escape(str(r.get('repaired_chunks','')))))
-            w.write('<td class="mono">{}</td>'.format(html.escape(str(r.get('failed_chunks','')))))
-            cls = 'ok' if ok else 'bad'
-            w.write('<td class="{}">{}</td>'.format(cls, html.escape(str(ok))))
-            w.write('</tr>\n')
-        w.write(TEMPLATE_FOOT)
+            srcname = r.get('source', '')
+            host = source_to_host.get(srcname, srcname)
+            groups.setdefault(host, []).append(r)
+        for host in sorted(groups.keys()):
+            w.write(TEMPLATE_HOST_HEAD.format(host=html.escape(str(host))))
+            for r in groups[host]:
+                ok = r.get('ok')
+                w.write('<tr>')
+                w.write('<td>{}</td>'.format(html.escape(str(r.get('scenario','')))))
+                w.write('<td>{}</td>'.format(html.escape(str(r.get('gpu','')) or str(r.get('gpu_mode','')))))
+                w.write('<td class="mono">{}</td>'.format(html.escape(str(r.get('k','')))))
+                w.write('<td class="mono">{}</td>'.format(html.escape(str(r.get('parity_pct','')))))
+                w.write('<td class="mono">{}</td>'.format(html.escape(str(r.get('chunk','')))))
+                w.write('<td>{}</td>'.format(html.escape(str(r.get('interleave','')))))
+                w.write('<td class="mono">{}</td>'.format(human_mib(r.get('total_bytes',0))))
+                w.write('<td class="mono">{}</td>'.format(human_mib(r.get('parity_bytes',0))))
+                w.write('<td class="mono">{}</td>'.format(html.escape(str(r.get('encode_ms','')))))
+                w.write('<td class="mono">{}</td>'.format(html.escape(str(r.get('repair_ms','')))))
+                w.write('<td class="mono">{}</td>'.format(html.escape(str(r.get('repaired_chunks','')))))
+                w.write('<td class="mono">{}</td>'.format(html.escape(str(r.get('failed_chunks','')))))
+                cls = 'ok' if ok else 'bad'
+                w.write('<td class="{}">{}</td>'.format(cls, html.escape(str(ok))))
+                w.write('</tr>\n')
+            w.write(TEMPLATE_TABLE_FOOT)
     print(f"Wrote {outp}")
 
 if __name__ == '__main__':
     sys.exit(main())
-

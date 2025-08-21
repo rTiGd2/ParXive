@@ -21,3 +21,13 @@ bench-html:
 # Package benchmark scripts (no binaries)
 bench-pack:
 	./scripts/bench_pack_local.sh
+
+# Collate all JSONL files into one and produce an HTML summary
+bench-collate-html:
+	@set -e; \
+	OUTDIR=_tgt/bench-results; mkdir -p $$OUTDIR; \
+	STAMP=$$(date +%Y%m%d-%H%M%S); \
+	OUTJSON=$$OUTDIR/all-$$STAMP.jsonl; \
+	python3 scripts/bench_collate.py $$OUTJSON $$(ls -1 $$OUTDIR/bench-*.jsonl 2>/dev/null) && \
+	python3 scripts/bench_to_html.py $$OUTJSON $$OUTDIR/summary_all.html && \
+	echo "Combined summary: $$OUTDIR/summary_all.html"
