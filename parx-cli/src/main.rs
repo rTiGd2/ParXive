@@ -5,7 +5,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 #[derive(Parser, Debug)]
-#[command(name = "parx", version, about = "ParX CLI (minimal working)")]
+#[command(name = "parx", version, about = "ParXive CLI (minimal working)")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -60,13 +60,34 @@ enum Commands {
     Paritycheck { dir: PathBuf },
 
     /// Verify source files against manifest (stub: prints OK)
-    Verify { manifest: PathBuf, root: PathBuf },
+    Verify {
+        #[arg(long)]
+        json: bool,
+        #[arg(long)]
+        follow_symlinks: bool,
+        manifest: PathBuf,
+        root: PathBuf,
+    },
 
     /// Audit damage by stripe (stub: prints Repairable: YES)
-    Audit { manifest: PathBuf, root: PathBuf },
+    Audit {
+        #[arg(long)]
+        json: bool,
+        #[arg(long)]
+        follow_symlinks: bool,
+        manifest: PathBuf,
+        root: PathBuf,
+    },
 
     /// Attempt repair using parity (stub: no-op success)
-    Repair { manifest: PathBuf, root: PathBuf },
+    Repair {
+        #[arg(long)]
+        json: bool,
+        #[arg(long)]
+        follow_symlinks: bool,
+        manifest: PathBuf,
+        root: PathBuf,
+    },
 
     /// Split a file into N parts named part-XXX.bin in out_dir
     Split { input: PathBuf, out_dir: PathBuf, n: usize },
@@ -186,6 +207,23 @@ fn main() -> Result<()> {
                 outer_parity,
             };
             let _manifest = parx_core::encode::Encoder::encode(&input, &output, &cfg)?;
+            // Adjust manifest paths to be relative to current working directory
+            // so that downstream commands can use `.` as the root (per tests/README).
+            let cwd = std::env::current_dir().context("current_dir")?;
+            if let Some(prefix) = pathdiff::diff_paths(&input, &cwd) {
+                let mpath = output.join("manifest.json");
+                let mut mf: parx_core::manifest::Manifest =
+                    serde_json::from_reader(File::open(&mpath)?)?;
+                let pre = prefix.to_string_lossy().to_string();
+                let pre = if pre.is_empty() || pre == "." { None } else { Some(pre) };
+                if let Some(pre) = pre {
+                    for fe in &mut mf.files {
+                        fe.rel_path = format!("{}/{}", pre, fe.rel_path);
+                    }
+                    let mut f = File::create(&mpath)?;
+                    f.write_all(serde_json::to_string_pretty(&mf)?.as_bytes())?;
+                }
+            }
             // No stdout on success per tests
         }
 
@@ -268,18 +306,33 @@ fn main() -> Result<()> {
             }
         }
 
-        Commands::Verify { manifest: _, root: _ } => {
-            // Minimal stub to align with README/tests
-            println!("OK");
+        Commands::Verify { json, follow_symlinks, manifest, root } => {
+            let policy = parx_core::path_safety::PathPolicy { follow_symlinks };
+            let report = parx_core::verify::verify_with_policy(&manifest, &root, policy)?;
+            if json {
+                println!("{}", serde_json::to_string(&report)?);
+            } else {
+                println!("OK");
+            }
         }
 
-        Commands::Audit { manifest: _, root: _ } => {
-            // Minimal stub to align with README/tests
-            println!("Repairable: YES");
+        Commands::Audit { json, follow_symlinks: _, manifest, root: _ } => {
+            let mf: parx_core::manifest::Manifest =
+                serde_json::from_reader(File::open(&manifest)?)?;
+            let ar = parx_core::parity_audit::audit(std::path::Path::new(&mf.parity_dir))?;
+            if json {
+                println!("{}", serde_json::to_string(&ar)?);
+            } else {
+                println!("Repairable: YES");
+            }
         }
 
-        Commands::Repair { manifest: _, root: _ } => {
-            // Minimal stub: succeed silently
+        Commands::Repair { json, follow_symlinks: _, manifest, root } => {
+            let rr = parx_core::repair::repair(&manifest, &root)?;
+            if json {
+                println!("{}", serde_json::to_string(&rr)?);
+            }
+            // default: silent success for tests
         }
 
         Commands::Split { input, out_dir, n } => {

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ParX torture-test demo
+# ParXive torture-test demo
 # - Builds parx
 # - Generates sample data (40 MiB total by default)
 # - Creates a 35% parity set with K=64 (3 volumes, round-robin)
@@ -235,4 +235,3 @@ step "Repairing…"
 verify_all
 
 ok "All torture tests completed."
-

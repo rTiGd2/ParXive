@@ -1,4 +1,4 @@
-# Contributing to ParX
+# Contributing to ParXive
 
 Thanks for considering a contribution! This document explains how to get set up,
 what quality checks to run, and the licensing terms for contributions.
@@ -52,7 +52,7 @@ cargo deny check     # licenses / bans / sources policy
 ## Licensing
 
 Unless you explicitly state otherwise, any contribution intentionally submitted
-for inclusion in ParX by you, as defined in the Apache-2.0 license, shall be
+for inclusion in ParXive by you, as defined in the Apache-2.0 license, shall be
 dual licensed as **MIT OR Apache-2.0** without any additional terms or
 conditions.
 

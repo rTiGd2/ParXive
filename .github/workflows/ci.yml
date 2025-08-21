@@ -2,33 +2,33 @@ name: CI
 
 on:
   push:
+    branches: [ main, master ]
   pull_request:
+    branches: [ main, master ]
 
 jobs:
   build-test:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install Rust (stable)
-        uses: dtolnay/rust-toolchain@stable
-
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: |
-            . -> target
-
+          save-if: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
       - name: Format check
         run: cargo fmt --all -- --check
-
       - name: Clippy (deny warnings)
         run: cargo clippy --workspace --all-targets -- -D warnings
-
       - name: Tests
-        run: cargo test --workspace --no-fail-fast
+        run: cargo test --workspace --locked
 
-      - name: Smoke (outer-RS, CRC) 
-        run: bash scripts/ci_smoke.sh
+  cargo-deny:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check

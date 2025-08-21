@@ -1,4 +1,4 @@
-# ParX
+# ParXive (formerly ParX)
 
 Reed–Solomon parity + integrity (BLAKE3 + Merkle) for large file sets.  
 Fast CPU path, robust volume format, and a clean library/CLI split.
@@ -30,13 +30,13 @@ cargo test --workspace
 ./target/release/parx repair .parx/manifest.json .
 ```
 
-## Why ParX (vs PAR2)
+## Why ParXive (vs PAR2)
 
 - **Per-stripe RS**: targets real damage patterns and limits blast radius.
 - **Integrity-first**: BLAKE3 per-chunk + Merkle root in the manifest.
 - **Robust volume index**: compressed index trailer; header hints; parity-aware audit.
 - **Round-robin parity placement**: losing one volume hurts less.
-- **Library-first**: embed ParX in other Rust tools; CLI is thin veneer.
+- **Library-first**: embed ParXive in other Rust tools; CLI is thin veneer.
 - **GPU path (scaffolded)**: CUDA backend hooks ready for batched stripes.
 
 ## Roadmap
@@ -88,7 +88,7 @@ Dual-licensed under **MIT** and **Apache-2.0** — pick one or both. See `LICENS
 - `repair` — Attempt repair (stub; Stage 2 will implement reconstruction).
   - `parx repair .parx/manifest.json .`
 
-- `outer-decode` — Inspect a file for a ParX index trailer and validate CRC.
+- `outer-decode` — Inspect a file for a ParXive index trailer and validate CRC.
   - `parx outer-decode file.bin`
 
 - `split` — Split a file into N parts as `part-XXX.bin` in an output dir.
@@ -125,13 +125,13 @@ parx outer-decode .parx/vol-000.parxv
 ```
 
 Notes
-- ParX stores a compressed, CRC-protected index at the end of each volume file.
+- ParXive stores a compressed, CRC-protected index at the end of each volume file.
 - The manifest includes per-chunk BLAKE3 hashes and a dataset Merkle root.
 - Outer RS (parity-of-parity) is planned; GPU acceleration is optional.
 
 ## Developers
 
-ParX is library-first. The `parx-core` crate exposes a clean API for encoding now, and will expose verify/audit/repair in Stage 2.
+ParXive is library-first. The `parx-core` crate exposes a clean API for encoding now, and will expose verify/audit/repair in Stage 2.
 
 ### Library usage (Rust)
 
@@ -184,9 +184,9 @@ cargo test --workspace
 - Please include tests for new functionality. Favor small, focused tests.
 - Security and robustness first: all inputs are untrusted; enforce bounds and limits.
 
-### Adopting ParX in other languages
+### Adopting ParXive in other languages
 
-ParX aims for broad adoption. We will provide:
+ParXive aims for broad adoption. We will provide:
 - A stable C-compatible FFI for `parx-core` (encode/verify/audit/repair).
 - Bindings and examples for popular ecosystems (Python, Node.js, Go, etc.).
 - Packaging guidance and policies to meet inclusion guidelines in official registries.

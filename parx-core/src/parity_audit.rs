@@ -4,13 +4,12 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::path::Path;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct ParityAuditReport {
     pub volumes: usize,
     pub stripe_parity_counts: HashMap<u32, usize>,
 }
 
-/// Scan parity volumes and summarize parity entries per stripe.
 pub fn audit(parity_dir: &Path) -> Result<ParityAuditReport> {
     let mut counts: HashMap<u32, usize> = HashMap::new();
     let mut vols = 0usize;
