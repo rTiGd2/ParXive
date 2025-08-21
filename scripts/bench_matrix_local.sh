@@ -24,6 +24,8 @@ K_SET=(${K_SET:-8 16})
 PARITY_PCT_SET=(${PARITY_PCT_SET:-25 50})
 CHUNK_SET=(${CHUNK_SET:-65536 1048576}) # 64 KiB, 1 MiB
 INTERLEAVE_SET=(${INTERLEAVE_SET:-off on})
+# GPU modes for informational comparisons (requires GPU-capable build/hardware)
+GPU_SET=(${GPU_SET:-off})
 SCENARIOS=(${SCENARIOS:-many-small many-large single mixed})
 
 # Scenario sizes (override via env): default is modest, adjust locally as needed
@@ -117,12 +119,15 @@ emit_result() {
 }
 
 echo "Writing results to: $RESULTS"
+# Emit environment meta line
+scripts/bench_env_info.sh >> "$RESULTS" || true
 
 for scenario in "${SCENARIOS[@]}"; do
   for K in "${K_SET[@]}"; do
     for PP in "${PARITY_PCT_SET[@]}"; do
       for CHUNK in "${CHUNK_SET[@]}"; do
         for IL in "${INTERLEAVE_SET[@]}"; do
+          for GPU in "${GPU_SET[@]}"; do
           ROOT="$ROOT_BASE/$scenario-K$K-P$PP-C$CHUNK-IL$IL"
           OUT="$OUT_BASE/$scenario-K$K-P$PP-C$CHUNK-IL$IL"
           rm -rf "$OUT"
@@ -135,7 +140,7 @@ for scenario in "${SCENARIOS[@]}"; do
           ILOPTS=""; if [[ "$IL" == "on" ]]; then ILOPTS="--interleave-files"; fi
 
           t0=$(ts_ms)
-          cargo run -q -p parx-cli -- create --parity "$PP" --stripe-k "$K" $ILOPTS --chunk-size "$CHUNK" --output "$OUT" --volume-sizes 64M,64M,64M "$ROOT"
+          cargo run -q -p parx-cli -- create --parity "$PP" --stripe-k "$K" $ILOPTS --chunk-size "$CHUNK" --gpu "$GPU" --output "$OUT" --volume-sizes 64M,64M,64M "$ROOT" || true
           t1=$(ts_ms)
           enc_ms=$((t1 - t0))
 
@@ -160,6 +165,7 @@ for scenario in "${SCENARIOS[@]}"; do
             --argjson parity_pct "$PP" \
             --argjson chunk "$CHUNK" \
             --arg interleave "$IL" \
+            --arg gpu_mode "$GPU" \
             --arg base_hash "$BASE_HASH" \
             --arg post_hash "$POST_HASH" \
             --argjson total_bytes "$TOTAL_BYTES" \
@@ -169,10 +175,10 @@ for scenario in "${SCENARIOS[@]}"; do
             --argjson repaired_chunks "$repaired" \
             --argjson failed_chunks "$failed" \
             --arg root "$ROOT" --arg out "$OUT" \
-            '{ts: now, scenario: $scenario, k: $k, parity_pct: $parity_pct, chunk: $chunk, interleave: $interleave, total_bytes: $total_bytes, parity_bytes: $parity_bytes, encode_ms: $encode_ms, repair_ms: $repair_ms, repaired_chunks: $repaired_chunks, failed_chunks: $failed_chunks, ok: ($base_hash==$post_hash), root: $root, out: $out, base_hash: $base_hash, post_hash: $post_hash}' )"
-          echo "[${scenario}] K=$K P=$PP C=$CHUNK IL=$IL => ok=$ok enc=${enc_ms}ms rep=${rep_ms}ms"
+            '{type:"result", ts: now, scenario: $scenario, k: $k, parity_pct: $parity_pct, chunk: $chunk, interleave: $interleave, gpu: $gpu_mode, total_bytes: $total_bytes, parity_bytes: $parity_bytes, encode_ms: $encode_ms, repair_ms: $repair_ms, repaired_chunks: $repaired_chunks, failed_chunks: $failed_chunks, ok: ($base_hash==$post_hash), root: $root, out: $out, base_hash: $base_hash, post_hash: $post_hash}' )"
+          echo "[${scenario}] K=$K P=$PP C=$CHUNK IL=$IL GPU=$GPU => ok=$ok enc=${enc_ms}ms rep=${rep_ms}ms"
+          done
         done
-      done
     done
   done
 done
