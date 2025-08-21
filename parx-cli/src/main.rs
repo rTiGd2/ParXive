@@ -94,6 +94,18 @@ enum Commands {
 
     /// Split a file into N parts named part-XXX.bin in out_dir
     Split { input: PathBuf, out_dir: PathBuf, n: usize },
+
+    /// Compute a hash catalogue for a dataset (per-file BLAKE3 plus a dataset hash)
+    Hashcat {
+        /// Print JSON output
+        #[arg(long)]
+        json: bool,
+        /// Print only the dataset hash (overrides --json)
+        #[arg(long)]
+        hash_only: bool,
+        /// Root directory of the dataset
+        root: PathBuf,
+    },
 }
 
 // moved to parx-core::index
@@ -369,6 +381,85 @@ fn run() -> Result<()> {
                     out.write_all(&chunk[..readn])?;
                     remaining = remaining.saturating_sub(readn as u64);
                 }
+            }
+        }
+
+        Commands::Hashcat { json, hash_only, root } => {
+            #[derive(serde::Serialize)]
+            struct FileHash {
+                path: String,
+                size: u64,
+                blake3_hex: String,
+            }
+            #[derive(serde::Serialize)]
+            struct Catalogue {
+                files: Vec<FileHash>,
+                total_bytes: u64,
+                dataset_hash_hex: String,
+            }
+
+            // Walk deterministically, excluding .parx directory
+            let mut paths: Vec<std::path::PathBuf> = Vec::new();
+            for ent in walkdir::WalkDir::new(&root).min_depth(1) {
+                let ent = ent?;
+                if ent.file_type().is_dir() {
+                    continue;
+                }
+                let p = ent.path();
+                if p.components().any(|c| c.as_os_str() == ".parx") {
+                    continue;
+                }
+                paths.push(p.to_path_buf());
+            }
+            paths.sort();
+
+            let mut files = Vec::new();
+            let mut total_bytes = 0u64;
+            let mut roll = blake3::Hasher::new();
+            let mut buf = vec![0u8; 1 << 20];
+            for p in paths {
+                let rel = pathdiff::diff_paths(&p, &root)
+                    .unwrap_or_else(|| p.file_name().unwrap().into());
+                let rels = rel.to_string_lossy().to_string();
+                let mut f = File::open(&p).with_context(|| format!("open {:?}", p))?;
+                let md = f.metadata()?;
+                total_bytes += md.len();
+                let mut hasher = blake3::Hasher::new();
+                loop {
+                    let readn = std::io::Read::read(&mut f, &mut buf)?;
+                    if readn == 0 {
+                        break;
+                    }
+                    hasher.update(&buf[..readn]);
+                }
+                let fh = hasher.finalize();
+                // Roll dataset hash with path, NUL, size, NUL, file hash bytes
+                roll.update(rels.as_bytes());
+                roll.update(&[0]);
+                roll.update(&md.len().to_le_bytes());
+                roll.update(&[0]);
+                roll.update(fh.as_bytes());
+                files.push(FileHash {
+                    path: rels,
+                    size: md.len(),
+                    blake3_hex: fh.to_hex().to_string(),
+                });
+            }
+            let dataset_hash_hex = roll.finalize().to_hex().to_string();
+            if hash_only {
+                println!("{}", dataset_hash_hex);
+                return Ok(());
+            }
+            let cat = Catalogue { files, total_bytes, dataset_hash_hex };
+            if json {
+                println!("{}", serde_json::to_string_pretty(&cat)?);
+            } else {
+                println!(
+                    "Files: {}  Bytes: {}  Dataset: {}",
+                    cat.files.len(),
+                    cat.total_bytes,
+                    cat.dataset_hash_hex
+                );
             }
         }
     }
