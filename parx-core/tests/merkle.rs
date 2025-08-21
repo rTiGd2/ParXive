@@ -5,7 +5,13 @@ use parx_core::volume::VolumeEntry;
 // Lightweight sanity: deterministic hex helper & types still round-trip via bincode
 #[test]
 fn volume_entry_bincode_roundtrip() {
-    let e = VolumeEntry { stripe: 123, parity_idx: 2, offset: 4096, len: 65536, hash: Some(*hash(b"xyz").as_bytes()) };
+    let e = VolumeEntry {
+        stripe: 123,
+        parity_idx: 2,
+        offset: 4096,
+        len: 65536,
+        hash: Some(*hash(b"xyz").as_bytes()),
+    };
     let bin = bincode::serialize(&e).unwrap();
     let de: VolumeEntry = bincode::deserialize(&bin).unwrap();
     assert_eq!(de.stripe, 123);
@@ -25,4 +31,3 @@ fn chunkref_json_roundtrip() {
     assert_eq!(d.len, 2048);
     assert_eq!(d.hash_hex, "abcd");
 }
-

@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct VolumeEntry {
@@ -25,14 +25,15 @@ pub struct VolumeHeaderBin {
     /// NOTE: In v0.4.3+ we repurpose this as *entry_count* (number of parity shards in this volume).
     /// It was previously unused (0). Older volumes will show 0 here.
     pub entries_len: u32,
-    pub manifest_hash: [u8;32],
+    pub manifest_hash: [u8; 32],
 }
 
 /// Legacy/simple name used during initial creation (before we know counts).
-pub fn vol_name(i: usize) -> String { format!("vol-{:03}.parxv", i) }
+pub fn vol_name(i: usize) -> String {
+    format!("vol-{:03}.parxv", i)
+}
 
 /// PAR2-style name with block count, e.g. vol-000+022.parxv
 pub fn vol_name_with_blocks(i: usize, blocks: usize) -> String {
     format!("vol-{:03}+{:03}.parxv", i, blocks)
 }
-

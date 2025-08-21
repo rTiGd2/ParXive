@@ -1,7 +1,7 @@
-pub mod progress;
-pub mod rs_codec;
 pub mod cuda_backend;
 pub mod manifest;
+pub mod progress;
+pub mod rs_codec;
 pub mod volume;
 
 // ---- i18n scaffolding (we'll plug proper Fluent in step 2) ----
@@ -21,10 +21,9 @@ impl Localizer for NoopLoc {
 
 /// Message codes we'll gradually route through i18n
 pub mod i18n_codes {
-    pub const CREATE_START: &str   = "create-start";
+    pub const CREATE_START: &str = "create-start";
     pub const PARITY_SUMMARY: &str = "parity-summary";
-    pub const STRIPE_PROGRESS: &str= "stripe-progress";
-    pub const VERIFY_RESULT: &str  = "verify-result";
+    pub const STRIPE_PROGRESS: &str = "stripe-progress";
+    pub const VERIFY_RESULT: &str = "verify-result";
     pub const REPAIR_SUMMARY: &str = "repair-summary";
 }
-

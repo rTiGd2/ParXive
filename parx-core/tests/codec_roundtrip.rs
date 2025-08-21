@@ -10,13 +10,12 @@ fn rs_reconstruct_exact_missing_under_m() {
     let total = k + m;
 
     // Make shards
-    let mut shards: Vec<Vec<u8>> = (0..total)
-        .map(|_| (0..chunk).map(|_| rng.gen()).collect())
-        .collect();
+    let mut shards: Vec<Vec<u8>> =
+        (0..total).map(|_| (0..chunk).map(|_| rng.gen()).collect()).collect();
 
     // Encode parity over zeroed parity slots
-    for i in k..total {
-        shards[i].fill(0);
+    for s in shards.iter_mut().skip(k) {
+        s.fill(0);
     }
     let mut refs: Vec<&mut [u8]> = shards.iter_mut().map(|v| v.as_mut_slice()).collect();
     RsCodec::new(k, m).unwrap().encode(&mut refs).unwrap();
@@ -34,4 +33,3 @@ fn rs_reconstruct_exact_missing_under_m() {
         assert_eq!(opts[i].as_ref().unwrap(), &shards[i]);
     }
 }
-

@@ -1,4 +1,4 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct FileEntry {
@@ -30,4 +30,3 @@ pub struct Manifest {
     pub outer_group: usize,
     pub outer_parity: usize,
 }
-

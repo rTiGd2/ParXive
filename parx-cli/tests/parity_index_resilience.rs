@@ -18,19 +18,34 @@ fn corrupt_index_trailer_does_not_panic() {
     }
 
     // create with 3 volumes
-    Command::cargo_bin("parx").unwrap()
+    Command::cargo_bin("parx")
+        .unwrap()
         .current_dir(td.path())
         .args([
-            "create", "--parity","50","--stripe-k","8","--chunk-size","32768",
-            "--output",".parx","--volume-sizes","1M,1M,1M","--gpu","off", data.path().to_str().unwrap()
+            "create",
+            "--parity",
+            "50",
+            "--stripe-k",
+            "8",
+            "--chunk-size",
+            "32768",
+            "--output",
+            ".parx",
+            "--volume-sizes",
+            "1M,1M,1M",
+            "--gpu",
+            "off",
+            data.path().to_str().unwrap(),
         ])
-        .assert().success();
+        .assert()
+        .success();
 
     // pick a volume and corrupt last 8 KiB (trailer)
-    let mut vols: Vec<_> = std::fs::read_dir(td.child(".parx").path()).unwrap()
+    let mut vols: Vec<_> = std::fs::read_dir(td.child(".parx").path())
+        .unwrap()
         .filter_map(|e| e.ok())
         .map(|e| e.path())
-        .filter(|p| p.extension().map(|s| s=="parxv").unwrap_or(false))
+        .filter(|p| p.extension().map(|s| s == "parxv").unwrap_or(false))
         .collect();
     vols.sort();
     let vol = vols.last().expect("at least one volume").to_path_buf();
@@ -44,17 +59,18 @@ fn corrupt_index_trailer_does_not_panic() {
     }
 
     // quickcheck should not fail; paritycheck should print a summary
-    Command::cargo_bin("parx").unwrap()
+    Command::cargo_bin("parx")
+        .unwrap()
         .current_dir(td.path())
         .args(["quickcheck", ".parx"])
         .assert()
         .success();
 
-    Command::cargo_bin("parx").unwrap()
+    Command::cargo_bin("parx")
+        .unwrap()
         .current_dir(td.path())
         .args(["paritycheck", ".parx"])
         .assert()
         .success()
         .stdout(predicate::str::contains("Parity audit across"));
 }
-

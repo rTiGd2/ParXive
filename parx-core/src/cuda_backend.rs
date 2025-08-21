@@ -40,9 +40,7 @@ pub mod cuda {
 
         /// Sanity-check kernel launch (no-op). Replace with real encode later.
         pub fn encode_noop(&self) -> Result<()> {
-            let func = self
-                .module
-                .get_function(&CString::new("noop_kernel").unwrap())?;
+            let func = self.module.get_function(&CString::new("noop_kernel").unwrap())?;
 
             // launch! requires the stream to be a local identifier
             let stream = Stream::new(StreamFlags::DEFAULT, None)?;
@@ -61,8 +59,11 @@ pub mod cuda {
     use anyhow::Result;
     pub struct CudaCtx;
     impl CudaCtx {
-        pub fn new() -> Result<Self> { Ok(CudaCtx) }
-        pub fn encode_noop(&self) -> Result<()> { Ok(()) }
+        pub fn new() -> Result<Self> {
+            Ok(CudaCtx)
+        }
+        pub fn encode_noop(&self) -> Result<()> {
+            Ok(())
+        }
     }
 }
-

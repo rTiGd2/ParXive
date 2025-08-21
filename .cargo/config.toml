@@ -1,0 +1,12 @@
+[alias]
+fmtcheck = "fmt --all -- --check"
+clippyall = "clippy --workspace --all-targets -- -D warnings"
+testall = "test --workspace --all-features -- --nocapture"
+audit = "run -q --package cargo-audit --"
+deny = "run -q --package cargo-deny -- check"
+
+[build]
+rustflags = ["-C", "debuginfo=1"]
+
+[target.'cfg(all())']
+
