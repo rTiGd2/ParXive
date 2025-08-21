@@ -36,7 +36,18 @@ Anti-bias measures
 - Predefine scoring and plots before running;
 - Document any anomalies and reruns.
 
-Next Steps
-- Scaffold `bench/` harness and minimal dataset generator.
-- Add CI job to lint/run a tiny smoke benchmark (short dataset) just for script integrity.
+Local-only runners
+- `scripts/bench_repair_smoke.sh` — quick sanity: create → delete subset → repair; asserts dataset hash matches baseline via `parx hashcat`.
+- `scripts/bench_matrix_local.sh` — matrix over scenarios and parameters (K, parity%, chunk size, interleave). Writes JSONL to `_tgt/bench-results/bench-<timestamp>.jsonl`.
 
+Usage (local)
+- `make bench-local`
+- `make bench-matrix`
+- Customize via env, e.g.:
+  `K_SET="8 16" PARITY_PCT_SET="25 50" CHUNK_SET="65536 1048576" INTERLEAVE_SET="off on" SCENARIOS="many-small mixed" ./scripts/bench_matrix_local.sh`
+
+Hash catalogue
+- `parx hashcat <root>` emits per-file BLAKE3 and a deterministic dataset hash; use `--hash-only` for baseline/post comparisons.
+
+CI policy
+- Heavy benchmarks are guarded and refuse to run in CI (`CI`/`GITHUB_ACTIONS`).
