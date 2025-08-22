@@ -46,6 +46,14 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Tests (Windows)
         run: cargo test --workspace --locked
+  tests-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Tests (macOS)
+        run: cargo test --workspace --locked
 
   build-test:
     runs-on: ubuntu-latest

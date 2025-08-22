@@ -55,9 +55,11 @@ impl Encoder {
         let mut tmp_files: Vec<TmpFile> = Vec::new();
         let mut total_bytes: u64 = 0;
         for path in &files {
-            let rel_path = pathdiff::diff_paths(path, root)
-                .unwrap_or_else(|| path.file_name().unwrap().into());
-            let rel_path = rel_path.to_string_lossy().to_string();
+            // Prefer a simple prefix strip since WalkDir yields paths under `root`.
+            // This avoids macOS `/var` -> `/private/var` symlink quirks and ensures
+            // manifest relpaths never contain parent traversal segments.
+            let rel = path.strip_prefix(root).expect("walked path not under root");
+            let rel_path = rel.to_string_lossy().to_string();
             let mut f = File::open(path).with_context(|| format!("open {:?}", path))?;
             let size = f.metadata()?.len();
             total_bytes += size;
