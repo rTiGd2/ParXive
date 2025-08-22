@@ -1,7 +1,7 @@
 use anyhow::{bail, Result};
-use std::path::{Component, Path, PathBuf};
 #[cfg(windows)]
 use std::os::windows::fs::MetadataExt as _;
+use std::path::{Component, Path, PathBuf};
 
 #[cfg(windows)]
 fn contains_path_case_insensitive(root: &Path, child: &Path) -> bool {

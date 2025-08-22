@@ -26,4 +26,3 @@ fn reject_symlink_components_when_not_following_windows() {
         }
     }
 }
-
