@@ -34,4 +34,3 @@ fn validate_case_insensitive_containment_when_following_symlinks() {
     let res = validate_path(&root_can, &rel, PathPolicy { follow_symlinks: true });
     assert!(res.is_ok(), "expected containment despite case differences");
 }
-
