@@ -7,6 +7,15 @@ use std::path::{Path, PathBuf};
 #[derive(Parser, Debug)]
 #[command(name = "parx", version, about = "ParXive CLI (minimal working)")]
 struct Cli {
+    /// Number of worker threads for parallel stages (default: CPUs)
+    #[arg(long)]
+    threads: Option<usize>,
+    /// Set CPU scheduling niceness (-20..19). Positive values lower priority.
+    #[arg(long)]
+    nice: Option<i32>,
+    /// I/O niceness: class[:prio] where class=idle|be|rt and prio=0..7 (lower is higher priority)
+    #[arg(long)]
+    ionice: Option<String>,
     #[command(subcommand)]
     command: Commands,
 }
@@ -94,6 +103,18 @@ enum Commands {
 
     /// Split a file into N parts named part-XXX.bin in out_dir
     Split { input: PathBuf, out_dir: PathBuf, n: usize },
+
+    /// Compute a hash catalogue for a dataset (per-file BLAKE3 plus a dataset hash)
+    Hashcat {
+        /// Print JSON output
+        #[arg(long)]
+        json: bool,
+        /// Print only the dataset hash (overrides --json)
+        #[arg(long)]
+        hash_only: bool,
+        /// Root directory of the dataset
+        root: PathBuf,
+    },
 }
 
 // moved to parx-core::index
@@ -160,8 +181,56 @@ fn list_volumes(dir: &Path) -> Result<Vec<PathBuf>> {
 
 // moved to parx-core::index
 
+fn apply_priority(nice: Option<i32>, ionice: Option<String>) {
+    // CPU nice via nix (safe wrapper). Best-effort with warning on failure.
+    if let Some(n) = nice {
+        // Use `renice` to avoid unsafe FFI; best-effort and warn on failure.
+        let pid = std::process::id().to_string();
+        match std::process::Command::new("renice").args(["-n", &n.to_string(), "-p", &pid]).status()
+        {
+            Ok(st) if st.success() => {}
+            Ok(st) => eprintln!("warn: renice returned status {}", st),
+            Err(e) => eprintln!("warn: renice not applied: {}", e),
+        }
+    }
+
+    // IO nice: shell out to ionice if present; warn on failure.
+    if let Some(spec) = ionice {
+        let mut parts = spec.split(':');
+        let class_s = parts.next().unwrap_or("");
+        let prio_s = parts.next().unwrap_or("4");
+        let class = match class_s.to_ascii_lowercase().as_str() {
+            "idle" => "3",
+            "be" | "best-effort" => "2",
+            "rt" | "realtime" => "1",
+            _ => "2",
+        };
+        let prio = prio_s;
+        let pid = std::process::id().to_string();
+        match std::process::Command::new("ionice")
+            .args(["-c", class, "-n", prio, "-p", &pid])
+            .status()
+        {
+            Ok(st) if st.success() => {}
+            Ok(st) => eprintln!("warn: ionice returned status {}", st),
+            Err(e) => eprintln!("warn: ionice not applied: {}", e),
+        }
+    }
+}
+
+fn configure_threads(threads: Option<usize>) {
+    if let Some(n) = threads {
+        if let Err(e) = rayon::ThreadPoolBuilder::new().num_threads(n).build_global() {
+            eprintln!("warn: could not set global thread pool (already set?): {}", e);
+        }
+    }
+}
+
 fn run() -> Result<()> {
     let cli = Cli::parse();
+    // Apply process priority and thread config early
+    apply_priority(cli.nice, cli.ionice.clone());
+    configure_threads(cli.threads);
     match cli.command {
         Commands::OuterDecode { file } => {
             // Practical implementation: try to read and validate the trailer+index CRC
@@ -332,8 +401,9 @@ fn run() -> Result<()> {
             }
         }
 
-        Commands::Repair { json, follow_symlinks: _, manifest, root } => {
-            let rr = parx_core::repair::repair(&manifest, &root)?;
+        Commands::Repair { json, follow_symlinks, manifest, root } => {
+            let policy = parx_core::path_safety::PathPolicy { follow_symlinks };
+            let rr = parx_core::repair::repair_with_policy(&manifest, &root, policy)?;
             if json {
                 println!("{}", serde_json::to_string(&rr)?);
             }
@@ -368,6 +438,85 @@ fn run() -> Result<()> {
                     out.write_all(&chunk[..readn])?;
                     remaining = remaining.saturating_sub(readn as u64);
                 }
+            }
+        }
+
+        Commands::Hashcat { json, hash_only, root } => {
+            #[derive(serde::Serialize)]
+            struct FileHash {
+                path: String,
+                size: u64,
+                blake3_hex: String,
+            }
+            #[derive(serde::Serialize)]
+            struct Catalogue {
+                files: Vec<FileHash>,
+                total_bytes: u64,
+                dataset_hash_hex: String,
+            }
+
+            // Walk deterministically, excluding .parx directory
+            let mut paths: Vec<std::path::PathBuf> = Vec::new();
+            for ent in walkdir::WalkDir::new(&root).min_depth(1) {
+                let ent = ent?;
+                if ent.file_type().is_dir() {
+                    continue;
+                }
+                let p = ent.path();
+                if p.components().any(|c| c.as_os_str() == ".parx") {
+                    continue;
+                }
+                paths.push(p.to_path_buf());
+            }
+            paths.sort();
+
+            let mut files = Vec::new();
+            let mut total_bytes = 0u64;
+            let mut roll = blake3::Hasher::new();
+            let mut buf = vec![0u8; 1 << 20];
+            for p in paths {
+                let rel = pathdiff::diff_paths(&p, &root)
+                    .unwrap_or_else(|| p.file_name().unwrap().into());
+                let rels = rel.to_string_lossy().to_string();
+                let mut f = File::open(&p).with_context(|| format!("open {:?}", p))?;
+                let md = f.metadata()?;
+                total_bytes += md.len();
+                let mut hasher = blake3::Hasher::new();
+                loop {
+                    let readn = std::io::Read::read(&mut f, &mut buf)?;
+                    if readn == 0 {
+                        break;
+                    }
+                    hasher.update(&buf[..readn]);
+                }
+                let fh = hasher.finalize();
+                // Roll dataset hash with path, NUL, size, NUL, file hash bytes
+                roll.update(rels.as_bytes());
+                roll.update(&[0]);
+                roll.update(&md.len().to_le_bytes());
+                roll.update(&[0]);
+                roll.update(fh.as_bytes());
+                files.push(FileHash {
+                    path: rels,
+                    size: md.len(),
+                    blake3_hex: fh.to_hex().to_string(),
+                });
+            }
+            let dataset_hash_hex = roll.finalize().to_hex().to_string();
+            if hash_only {
+                println!("{}", dataset_hash_hex);
+                return Ok(());
+            }
+            let cat = Catalogue { files, total_bytes, dataset_hash_hex };
+            if json {
+                println!("{}", serde_json::to_string_pretty(&cat)?);
+            } else {
+                println!(
+                    "Files: {}  Bytes: {}  Dataset: {}",
+                    cat.files.len(),
+                    cat.total_bytes,
+                    cat.dataset_hash_hex
+                );
             }
         }
     }

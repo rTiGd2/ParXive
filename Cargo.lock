@@ -737,7 +737,7 @@ dependencies = [
 
 [[package]]
 name = "parx-cli"
-version = "0.5.0"
+version = "0.6.0-beta.0"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -762,15 +762,17 @@ dependencies = [
 
 [[package]]
 name = "parx-core"
-version = "0.5.0"
+version = "0.6.0-beta.0"
 dependencies = [
  "anyhow",
  "bincode",
  "blake3",
  "chrono",
  "crc32fast",
+ "fastrand",
  "fluent-bundle",
  "fs2",
+ "getrandom 0.2.16",
  "globset",
  "memmap2",
  "pathdiff",

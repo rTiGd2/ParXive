@@ -40,7 +40,10 @@ echo "verify: $out"
 test "$out" = "OK"
 
 echo "==> Delete one parity volume, corrupt another page, repair using outer-RS"
-VDEL=$(ls "$PARX_DIR"/vol-*.parxv | sort | sed -n '1p' || true)
+VDEL=$(find "$PARX_DIR" -maxdepth 1 -type f -name 'vol-*.parxv' -print0 2>/dev/null | xargs -0 -r -n1 basename | sort | sed -n '1p' || true)
+if [[ -n "${VDEL:-}" ]]; then
+  VDEL="$PARX_DIR/$VDEL"
+fi
 if [[ -n "${VDEL:-}" ]]; then
   rm -f "$VDEL"
 fi
@@ -54,7 +57,7 @@ echo "verify: $out"
 test "$out" = "OK"
 
 echo "==> Break a volume index CRC, quickcheck should report index ERROR"
-VCRC=$(ls "$PARX_DIR"/vol-*.parxv | head -n1 || true)
+VCRC=$(find "$PARX_DIR" -maxdepth 1 -type f -name 'vol-*.parxv' -print0 2>/dev/null | xargs -0 -r -n1 | head -n1 || true)
 if [[ -n "${VCRC:-}" ]]; then
   fsz=$(stat -c%s "$VCRC")
   python3 - "$VCRC" "$fsz" <<'PY'

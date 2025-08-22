@@ -13,7 +13,7 @@ contexts=(
   "clippy"
   "tests"
   "cargo-deny"
-  "Analyze"
+  "Analyze (rust)"
 )
 
 # Build JSON array of contexts
@@ -29,7 +29,6 @@ json=$(jq -n --argjson contexts "$ctx_json" '{
   required_linear_history: true
 }')
 
-printf '%s' "$json" | gh api -X PUT repos/$OWNER/$REPO/branches/$BR/protection -H "Accept: application/vnd.github+json" --input -
+printf '%s' "$json" | gh api -X PUT repos/"$OWNER"/"$REPO"/branches/"$BR"/protection -H "Accept: application/vnd.github+json" --input -
 echo
 echo "Done. Note: ensure jobs exist before making them required."
-

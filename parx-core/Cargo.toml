@@ -1,6 +1,6 @@
 [package]
 name = "parx-core"
-version = "0.5.0"
+version = "0.6.0-beta.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "ParXive core library: erasure coding, volumes, manifest, repair, audit."
@@ -38,6 +38,8 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 proptest = "1"
 rand = "0.8"
 tempfile = "3"
+getrandom = "0.2"
+fastrand = "2"
 
 # i18n scaffolding (kept optional for now; we'll wire Fluent in step 2)
 # fluent-bundle = "0.15"

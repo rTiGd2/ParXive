@@ -1,0 +1,63 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: build-${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build CLI (release)
+        run: |
+          cargo build --release -p parx-cli
+      - name: Archive binary
+        shell: bash
+        run: |
+          mkdir -p dist
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            cp target/release/parx.exe dist/parx-windows-x86_64.exe
+          else
+            cp target/release/parx dist/parx-linux-x86_64
+          fi
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: parx-${{ matrix.os }}
+          path: dist/*
+
+  publish:
+    name: publish-release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/**/parx-*
+          body: |
+            Pre-release with parallel encode/verify/repair and performance flags.
+
+            Notes:
+            - HDD (spinning rust) not optimized yet; SSD/NVMe recommended for testing.
+            - Windows priority flags are best-effort.
+          draft: false
+          prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
