@@ -11,7 +11,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
 
     steps:
       - uses: actions/checkout@v4
@@ -22,12 +22,27 @@ jobs:
       - name: Archive binary
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p dist
-          if [[ "$RUNNER_OS" == "Windows" ]]; then
-            cp target/release/parx.exe dist/parx-windows-x86_64.exe
-          else
-            cp target/release/parx dist/parx-linux-x86_64
-          fi
+          OS="$RUNNER_OS"
+          ARCH="$(uname -m)"
+          case "$OS" in
+            Windows)
+              # GitHub reports Windows; normalize name and assume x86_64 for runner
+              cp target/release/parx.exe "dist/parx-windows-${ARCH}.exe"
+              ;;
+            macOS)
+              # macOS runner; use arch from uname -m (arm64/x86_64)
+              cp target/release/parx "dist/parx-macos-${ARCH}"
+              ;;
+            Linux)
+              cp target/release/parx "dist/parx-linux-${ARCH}"
+              ;;
+            *)
+              echo "Unknown OS: $OS" >&2
+              exit 1
+              ;;
+          esac
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:

@@ -2,7 +2,8 @@ use std::fs::{self, File};
 use std::io::Write;
 // no extra imports
 
-#[cfg(target_family = "unix")]
+// Only compile symlink tests on Unix where creation is generally permitted.
+#[cfg(unix)]
 fn symlink_dir<P: AsRef<std::path::Path>, Q: AsRef<std::path::Path>>(
     src: P,
     dst: Q,
@@ -10,6 +11,7 @@ fn symlink_dir<P: AsRef<std::path::Path>, Q: AsRef<std::path::Path>>(
     std::os::unix::fs::symlink(src, dst)
 }
 
+#[cfg(unix)]
 #[test]
 fn verify_rejects_symlink_by_default_allows_with_flag_when_contained() {
     let tmp = tempfile::tempdir().unwrap();
@@ -58,6 +60,7 @@ fn verify_rejects_symlink_by_default_allows_with_flag_when_contained() {
     assert!(rep.merkle_ok);
 }
 
+#[cfg(unix)]
 #[test]
 fn verify_blocks_symlink_escape_even_when_following() {
     let tmp = tempfile::tempdir().unwrap();

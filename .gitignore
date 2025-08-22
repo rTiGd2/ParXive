@@ -23,4 +23,5 @@ Thumbs.db
 
 # Local build caches/output
 /_tgt/
+/_artifacts/
 big.bin
