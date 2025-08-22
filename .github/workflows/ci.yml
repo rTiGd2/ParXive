@@ -38,6 +38,15 @@ jobs:
       - name: Tests
         run: cargo test --workspace --locked
 
+  tests-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Tests (Windows)
+        run: cargo test --workspace --locked
+
   build-test:
     runs-on: ubuntu-latest
     needs: [fmt, clippy, tests]

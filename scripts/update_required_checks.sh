@@ -13,7 +13,7 @@ contexts=(
   "clippy"
   "tests"
   "cargo-deny"
-  "Analyze"
+  "Analyze (rust)"
 )
 
 # Build JSON array of contexts
