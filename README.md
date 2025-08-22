@@ -143,6 +143,7 @@ Notes
 - ParXive stores a compressed, CRC-protected index at the end of each volume file.
 - The manifest includes per-chunk BLAKE3 hashes and a dataset Merkle root.
 - Outer RS (parity-of-parity) is planned; GPU acceleration is optional.
+- Performance note: HDDs (spinning rust) are not yet optimized; for best results use SSD/NVMe and tune `--threads`. On HDDs, try lower `--threads` and consider `--ionice be:6`.
 
 ## Developers
 
