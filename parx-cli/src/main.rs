@@ -297,7 +297,8 @@ fn run() -> Result<()> {
             // Adjust manifest paths to be relative to current working directory
             // so that downstream commands can use `.` as the root (per tests/README).
             let cwd = std::env::current_dir().context("current_dir")?;
-            if let Some(prefix) = pathdiff::diff_paths(&input, &cwd) {
+            // Only adjust manifest if input is inside the current working directory.
+            if let Ok(prefix) = input.strip_prefix(&cwd) {
                 let mpath = output.join("manifest.json");
                 let mut mf: parx_core::manifest::Manifest =
                     serde_json::from_reader(File::open(&mpath)?)?;
@@ -488,8 +489,10 @@ fn run() -> Result<()> {
             let mut roll = blake3::Hasher::new();
             let mut buf = vec![0u8; 1 << 20];
             for p in paths {
-                let rel = pathdiff::diff_paths(&p, &root)
-                    .unwrap_or_else(|| p.file_name().unwrap().into());
+                let rel = p
+                    .strip_prefix(&root)
+                    .unwrap_or_else(|_| p.file_name().unwrap().as_ref())
+                    .to_path_buf();
                 let rels = rel.to_string_lossy().to_string();
                 let mut f = File::open(&p).with_context(|| format!("open {:?}", p))?;
                 let md = f.metadata()?;

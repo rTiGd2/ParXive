@@ -56,13 +56,9 @@ impl Encoder {
         let mut total_bytes: u64 = 0;
         for path in &files {
             // Prefer a simple prefix strip since WalkDir yields paths under `root`.
-            // This avoids macOS `/var` -> `/private/var` symlink quirks that can
-            // cause `diff_paths` to emit `..` segments.
-            let rel = match path.strip_prefix(root) {
-                Ok(p) => p.to_path_buf(),
-                Err(_) => pathdiff::diff_paths(path, root)
-                    .unwrap_or_else(|| path.file_name().unwrap().into()),
-            };
+            // This avoids macOS `/var` -> `/private/var` symlink quirks and ensures
+            // manifest relpaths never contain parent traversal segments.
+            let rel = path.strip_prefix(root).expect("walked path not under root");
             let rel_path = rel.to_string_lossy().to_string();
             let mut f = File::open(path).with_context(|| format!("open {:?}", path))?;
             let size = f.metadata()?.len();
