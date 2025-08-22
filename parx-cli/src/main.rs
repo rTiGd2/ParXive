@@ -297,8 +297,17 @@ fn run() -> Result<()> {
             // Adjust manifest paths to be relative to current working directory
             // so that downstream commands can use `.` as the root (per tests/README).
             let cwd = std::env::current_dir().context("current_dir")?;
-            // Only adjust manifest if input is inside the current working directory.
-            if let Ok(prefix) = input.strip_prefix(&cwd) {
+            // Adjust manifest so relpaths are relative to CWD, even on macOS where
+            // CWD may be /private/var/... while input is /var/...
+            let mut maybe_prefix = input.strip_prefix(&cwd).ok().map(|p| p.to_path_buf());
+            if maybe_prefix.is_none() {
+                if let (Ok(cwd_can), Ok(inp_can)) = (cwd.canonicalize(), input.canonicalize()) {
+                    if let Ok(p) = inp_can.strip_prefix(&cwd_can) {
+                        maybe_prefix = Some(p.to_path_buf());
+                    }
+                }
+            }
+            if let Some(prefix) = maybe_prefix {
                 let mpath = output.join("manifest.json");
                 let mut mf: parx_core::manifest::Manifest =
                     serde_json::from_reader(File::open(&mpath)?)?;
@@ -489,10 +498,15 @@ fn run() -> Result<()> {
             let mut roll = blake3::Hasher::new();
             let mut buf = vec![0u8; 1 << 20];
             for p in paths {
-                let rel = p
-                    .strip_prefix(&root)
-                    .unwrap_or_else(|_| p.file_name().unwrap().as_ref())
-                    .to_path_buf();
+                let mut rel = p.strip_prefix(&root).ok().map(|pp| pp.to_path_buf());
+                if rel.is_none() {
+                    if let (Ok(rc), Ok(pc)) = (root.canonicalize(), p.canonicalize()) {
+                        if let Ok(pp) = pc.strip_prefix(&rc) {
+                            rel = Some(pp.to_path_buf());
+                        }
+                    }
+                }
+                let rel = rel.unwrap_or_else(|| p.file_name().unwrap().into());
                 let rels = rel.to_string_lossy().to_string();
                 let mut f = File::open(&p).with_context(|| format!("open {:?}", p))?;
                 let md = f.metadata()?;
