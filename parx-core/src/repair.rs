@@ -228,7 +228,30 @@ pub fn repair_with_policy(
                 tf.write_all(&orig)?;
                 tf.sync_all()?;
             }
-            std::fs::rename(&tmp, &path)?;
+            // Best-effort fsync of parent directory on Unix for durability
+            #[cfg(unix)]
+            {
+                if let Some(dir) = parent.to_str() {
+                    if let Ok(df) = std::fs::File::open(dir) {
+                        let _ = df.sync_all();
+                    }
+                }
+            }
+            // On Windows, rename fails if destination exists; try remove then rename.
+            #[cfg(windows)]
+            {
+                match std::fs::rename(&tmp, &path) {
+                    Ok(()) => {}
+                    Err(_) => {
+                        let _ = std::fs::remove_file(&path);
+                        std::fs::rename(&tmp, &path)?;
+                    }
+                }
+            }
+            #[cfg(not(windows))]
+            {
+                std::fs::rename(&tmp, &path)?;
+            }
             Ok(())
         })();
         if atomic_res.is_err() {

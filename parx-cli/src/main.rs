@@ -182,9 +182,9 @@ fn list_volumes(dir: &Path) -> Result<Vec<PathBuf>> {
 // moved to parx-core::index
 
 fn apply_priority(nice: Option<i32>, ionice: Option<String>) {
-    // CPU nice via nix (safe wrapper). Best-effort with warning on failure.
+    // CPU nice via renice: available on Unix (Linux/macOS). Best-effort.
+    #[cfg(unix)]
     if let Some(n) = nice {
-        // Use `renice` to avoid unsafe FFI; best-effort and warn on failure.
         let pid = std::process::id().to_string();
         match std::process::Command::new("renice").args(["-n", &n.to_string(), "-p", &pid]).status()
         {
@@ -193,8 +193,15 @@ fn apply_priority(nice: Option<i32>, ionice: Option<String>) {
             Err(e) => eprintln!("warn: renice not applied: {}", e),
         }
     }
+    #[cfg(not(unix))]
+    {
+        if nice.is_some() {
+            eprintln!("warn: --nice not supported on this OS");
+        }
+    }
 
-    // IO nice: shell out to ionice if present; warn on failure.
+    // IO nice via ionice: Linux-only.
+    #[cfg(target_os = "linux")]
     if let Some(spec) = ionice {
         let mut parts = spec.split(':');
         let class_s = parts.next().unwrap_or("");
@@ -214,6 +221,12 @@ fn apply_priority(nice: Option<i32>, ionice: Option<String>) {
             Ok(st) if st.success() => {}
             Ok(st) => eprintln!("warn: ionice returned status {}", st),
             Err(e) => eprintln!("warn: ionice not applied: {}", e),
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        if ionice.is_some() {
+            eprintln!("warn: --ionice is Linux-only");
         }
     }
 }
