@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir:*)",
+      "WebSearch",
+      "WebFetch(domain:docs.rs)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

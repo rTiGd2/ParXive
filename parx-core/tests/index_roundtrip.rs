@@ -28,7 +28,7 @@ fn index_write_read_roundtrip() {
             outer_for_stripe: None,
         },
     ];
-    index::write_index_and_trailer(&f, &entries).unwrap();
+    index::write_index_and_trailer(&f, &entries, None).unwrap();
 
     let mut f2 = File::open(&path).unwrap();
     let (off, len, crc) = index::read_trailer(&mut f2).unwrap();

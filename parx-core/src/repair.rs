@@ -16,9 +16,9 @@ pub struct RepairReport {
     pub failed_chunks: u64,
 }
 
-type ParityMap = HashMap<u32, Vec<(usize, Vec<u8>)>>;
+type ParityMap = HashMap<u32, Vec<(usize, std::path::PathBuf, u64, u32)>>;
 
-fn collect_parity_shards(parity_dir: &Path, chunk_size: usize) -> Result<ParityMap> {
+fn collect_parity_entries(parity_dir: &Path) -> Result<ParityMap> {
     let mut map: ParityMap = HashMap::new();
     if !parity_dir.exists() {
         return Ok(map);
@@ -30,13 +30,12 @@ fn collect_parity_shards(parity_dir: &Path, chunk_size: usize) -> Result<ParityM
             let (off, len, crc) = read_trailer(&mut f)?;
             let entries = read_index(&mut f, off, len, crc, &IndexLimits::default())?;
             for e in entries {
-                let mut buf = vec![0u8; e.len as usize];
-                f.seek(SeekFrom::Start(e.offset))?;
-                f.read_exact(&mut buf)?;
-                if buf.len() < chunk_size {
-                    buf.resize(chunk_size, 0);
-                }
-                map.entry(e.stripe).or_default().push((e.parity_idx as usize, buf));
+                map.entry(e.stripe).or_default().push((
+                    e.parity_idx as usize,
+                    p.clone(),
+                    e.offset,
+                    e.len,
+                ));
             }
         }
     }
@@ -65,7 +64,7 @@ pub fn repair_with_policy(
         bail!("no parity available (parity_pct=0)");
     }
     let _rs = RsCodec::new(k, m).context("init RS")?; // validate params early
-    let parity_map = collect_parity_shards(Path::new(&mf.parity_dir), mf.chunk_size)?;
+    let parity_map = collect_parity_entries(Path::new(&mf.parity_dir))?;
 
     // Build map idx -> (safe_path, offset, len) and record target file sizes
     let mut idx_map: HashMap<u64, (PathBuf, u64, u32)> = HashMap::new();
@@ -118,13 +117,15 @@ pub fn repair_with_policy(
     let chunk_size = mf.chunk_size;
     type Edit = (PathBuf, u64, Vec<u8>);
     type StripeResult = (u64, Vec<Edit>);
-    let results: Vec<StripeResult> = to_repair
+    let results: Result<Vec<StripeResult>> = to_repair
         .into_par_iter()
-        .map(|(stripe, missing)| {
+        .map(|(stripe, missing)| -> Result<StripeResult> {
             let mut repaired_local = 0u64;
             let mut edits_local: Vec<Edit> = Vec::new();
             // K data shards
             let mut data_bufs: Vec<Option<Vec<u8>>> = Vec::with_capacity(k);
+            #[cfg(test)]
+            let parx_inv_dbg = std::env::var("PARX_INV_DBG").ok().is_some();
             for i in 0..k {
                 let idx = stripe * k as u64 + i as u64;
                 if missing.contains(&i) {
@@ -140,6 +141,16 @@ pub fn repair_with_policy(
                             }
                         }
                     }
+                    #[cfg(test)]
+                    if parx_inv_dbg {
+                        eprintln!(
+                            "repair stripe={} data_i={} data_len={} chunk_size={}",
+                            stripe,
+                            i,
+                            buf.len(),
+                            chunk_size
+                        );
+                    }
                     data_bufs.push(Some(buf));
                 }
             }
@@ -147,35 +158,63 @@ pub fn repair_with_policy(
             for (i, db) in data_bufs.into_iter().enumerate() {
                 shards[i] = db;
             }
-            let mut parity = Vec::new();
+            let mut parity_meta: Vec<(usize, std::path::PathBuf, u64, u32)> = Vec::new();
             if let Some(v) = parity_map.get(&(stripe as u32)) {
-                parity = v.clone();
+                parity_meta = v.clone();
             }
-            if parity.len() < m {
+            if parity_meta.len() < m {
                 // cannot repair this stripe
-                return (0u64, edits_local);
+                return Ok((0u64, edits_local));
             }
-            for (pi, pbuf) in parity.into_iter() {
+            for (pi, path, off, len) in parity_meta.into_iter() {
                 if pi < m {
-                    shards[k + pi] = Some(pbuf);
+                    let mut f = File::open(&path).with_context(|| format!("open {:?}", path))?;
+                    f.seek(SeekFrom::Start(off)).context("seek parity shard")?;
+                    let mut buf = vec![0u8; chunk_size];
+                    // Always zero-fill tail beyond actual len to maintain exact C bytes
+                    if len > 0 {
+                        let mut small = vec![0u8; len as usize];
+                        f.read_exact(&mut small).context("read parity shard")?;
+                        buf[..small.len()].copy_from_slice(&small);
+                        if small.len() < chunk_size {
+                            for b in &mut buf[small.len()..] {
+                                *b = 0;
+                            }
+                        }
+                    }
+                    #[cfg(test)]
+                    if parx_inv_dbg {
+                        eprintln!(
+                            "repair stripe={} parity_pi={} par_len={} chunk_size={}",
+                            stripe, pi, len, chunk_size
+                        );
+                    }
+                    shards[k + pi] = Some(buf);
                 }
             }
-            let rs = RsCodec::new(k, m).expect("init RS");
+            let rs = RsCodec::new(k, m).context("init RS")?;
             if rs.reconstruct(&mut shards).is_ok() {
                 for i in missing {
                     let idx = stripe * k as u64 + i as u64;
                     if let Some((path, off, len)) = idx_map.get(&idx) {
                         if let Some(Some(buf)) = shards.get(i) {
+                            #[cfg(test)]
+                            if parx_inv_dbg {
+                                eprintln!(
+                                    "repair write stripe={} data_i={} out_len={}",
+                                    stripe, i, len
+                                );
+                            }
                             edits_local.push((path.clone(), *off, buf[..*len as usize].to_vec()));
                             repaired_local += 1;
                         }
                     }
                 }
             }
-            (repaired_local, edits_local)
+            Ok((repaired_local, edits_local))
         })
         .collect();
-
+    let results = results?;
     let mut repaired_chunks = 0u64;
     // Collect per-file edits for atomic replacement
     let mut file_edits: HashMap<PathBuf, Vec<(u64, Vec<u8>)>> = HashMap::new();

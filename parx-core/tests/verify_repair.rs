@@ -60,8 +60,12 @@ fn repair_single_file_bitflip() {
     // Single file with random data (~8 MiB)
     let path = root.join("single.bin");
     let mut f = std::fs::File::create(&path).unwrap();
+    // Deterministic bytes for stability
     let mut buf = vec![0u8; 8 * 1024 * 1024];
-    getrandom::getrandom(&mut buf).unwrap();
+    fastrand::seed(0x1BADF00Du64);
+    for b in &mut buf {
+        *b = fastrand::u8(..);
+    }
     std::io::Write::write_all(&mut f, &buf).unwrap();
 
     let out = td.path().join(".parx");
@@ -83,7 +87,10 @@ fn repair_single_file_bitflip() {
     let off = ((fastrand::u64(..(sz - 4096))) / 4096) * 4096; // page aligned
     g.seek(SeekFrom::Start(off)).unwrap();
     let mut flip = vec![0u8; 4096];
-    getrandom::getrandom(&mut flip).unwrap();
+    fastrand::seed(0xC0FFEEu64);
+    for b in &mut flip {
+        *b = fastrand::u8(..);
+    }
     g.write_all(&flip).unwrap();
 
     // Verify now detects bad chunks

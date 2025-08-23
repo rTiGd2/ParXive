@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ParXive Code Audit Report</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            line-height: 1.6;
+            margin: 20px;
+        }
+        h1, h2, h3 {
+            color: #333;
+        }
+        .summary {
+            background-color: #f0f0f0;
+            padding: 15px;
+            border-radius: 5px;
+        }
+        .finding {
+            border: 1px solid #ccc;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 5px;
+        }
+        .severity {
+            font-weight: bold;
+        }
+        .severity-high {
+            color: #d9534f;
+        }
+        .severity-medium {
+            color: #f0ad4e;
+        }
+        .severity-low {
+            color: #5bc0de;
+        }
+        .recommendation {
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>ParXive Code Audit Report</h1>
+    <p><strong>Date:</strong> 2025-08-22</p>
+    <p><strong>Auditor:</strong> Tig</p>
+
+    <div class="summary">
+        <h2>Summary</h2>
+        <p>
+            The ParXive codebase is a well-structured and ambitious project that aims to provide a modern and robust solution for file parity and integrity. The code is generally well-written and follows Rust best practices. The use of a library-first approach is commendable, as it allows for easy integration into other tools.
+        </p>
+        <p>
+            The audit has identified several areas for improvement, primarily in the areas of error handling, memory management, and security. The most critical issues are related to the potential for panics in the parallel processing code, and the high memory usage of the encoding and repair processes.
+        </p>
+        <p>
+            The report provides detailed recommendations for addressing each of the identified issues. By implementing these recommendations, the ParXive project can be made more robust, secure, and reliable.
+        </p>
+    </div>
+
+    <h2>Findings</h2>
+
+    <div class="finding">
+        <h3>Unmaintained Dependency: `instant`</h3>
+        <p><span class="severity severity-low">Severity: Low</span></p>
+        <p>
+            The `cargo audit` tool identified that the `instant` crate (version 0.1.13) is unmaintained. This crate is a transitive dependency, brought in by `reed-solomon-erasure`.
+        </p>
+        <div class="recommendation">
+            <h4>Recommendation</h4>
+            <p>
+                While this is not a critical vulnerability, it is recommended to monitor the situation and consider switching to a maintained alternative if one becomes available. The `reed-solomon-erasure` crate may update its dependencies in the future, which would resolve this issue.
+            </p>
+        </div>
+    </div>
+
+    <div class="finding">
+        <h3>Error Handling in Parallel Processing</h3>
+        <p><span class="severity severity-high">Severity: High</span></p>
+        <p>
+            The `encode.rs`, `verify.rs`, and `repair.rs` modules use `rayon` for parallel processing. However, the error handling within the `par_iter` blocks is not robust. The code uses `expect()` and discards errors, which can cause the entire process to panic if an error occurs in one of the threads.
+        </p>
+        <div class="recommendation">
+            <h4>Recommendation</h4>
+            <p>
+                It is recommended to refactor the parallel processing code to use `Result` and collect all the errors from the threads. This will prevent the process from panicking and will provide a more complete report of the errors that occurred.
+            </p>
+        </div>
+    </div>
+
+    <div class="finding">
+        <h3>High Memory Usage</h3>
+        <p><span class="severity severity-high">Severity: High</span></p>
+        <p>
+            The `encode.rs` and `repair.rs` modules read all the file chunks and parity shards into memory before processing them. This can lead to out-of-memory errors for large file sets.
+        </p>
+        <div class="recommendation">
+            <h4>Recommendation</h4>
+            <p>
+                It is recommended to refactor the code to use a streaming approach, where data is processed in smaller chunks. This will significantly reduce the memory usage of the application and make it more scalable.
+            </p>
+        </div>
+    </div>
+
+    <div class="finding">
+        <h3>Potential for Panics</h3>
+        <p><span class="severity severity-medium">Severity: Medium</span></p>
+        <p>
+            The code uses `unwrap()` and `expect()` in several places. While some of these may be safe, it is generally better to avoid them in library code and use `Result` instead. This will make the code more robust and prevent it from panicking unexpectedly.
+        </p>
+        <div class="recommendation">
+            <h4>Recommendation</h4>
+            <p>
+                It is recommended to replace all instances of `unwrap()` and `expect()` with proper error handling using `Result`.
+            </p>
+        </div>
+    </div>
+
+    <div class="finding">
+        <h3>Code Complexity</h3>
+        <p><span class="severity severity-medium">Severity: Medium</span></p>
+        <p>
+            The `repair_with_policy` function in `repair.rs` is very long and complex. This makes it difficult to read, understand, and maintain.
+        </p>
+        <div class="recommendation">
+            <h4>Recommendation</h4>
+            <p>
+                It is recommended to refactor the `repair_with_policy` function into smaller, more manageable functions. This will improve the readability and maintainability of the code.
+            </p>
+        </div>
+    </div>
+
+    <div class="finding">
+        <h3>Security: Resource Exhaustion</h3>
+        <p><span class="severity severity-medium">Severity: Medium</span></p>
+        <p>
+            The high memory usage of the application could be a vector for a resource exhaustion attack. A malicious user could create a manifest file that points to very large files, causing the application to consume a lot of memory and potentially crash.
+        </p>
+        <div class="recommendation">
+            <h4>Recommendation</h4>
+            <p>
+                In addition to implementing a streaming approach, it is recommended to add limits to the amount of data that can be read into memory at once. This will help to mitigate the risk of a resource exhaustion attack.
+            </p>
+        </div>
+    </div>
+
+</body>
+</html>

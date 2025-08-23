@@ -1,3 +1,4 @@
+pub mod compute;
 pub mod cuda_backend;
 pub mod encode;
 pub mod index;

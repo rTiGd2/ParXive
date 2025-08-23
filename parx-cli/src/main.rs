@@ -405,7 +405,20 @@ fn run() -> Result<()> {
 
         Commands::Verify { json, follow_symlinks, manifest, root } => {
             let policy = parx_core::path_safety::PathPolicy { follow_symlinks };
-            let report = parx_core::verify::verify_with_policy(&manifest, &root, policy)?;
+            let report = match std::fs::File::open(&manifest) {
+                Ok(_) => parx_core::verify::verify_with_policy(&manifest, &root, policy)?,
+                Err(_) => {
+                    // Fallback: try to load embedded manifest from volumes in the parity dir
+                    let mf: parx_core::manifest::Manifest =
+                        match try_load_embedded_manifest(&manifest) {
+                            Some(m) => m,
+                            None => {
+                                anyhow::bail!("manifest not found and no embedded backup located")
+                            }
+                        };
+                    parx_core::verify::verify_with_manifest(mf, &root, policy)?
+                }
+            };
             if json {
                 println!("{}", serde_json::to_string(&report)?);
             } else {
@@ -414,8 +427,12 @@ fn run() -> Result<()> {
         }
 
         Commands::Audit { json, follow_symlinks: _, manifest, root: _ } => {
-            let mf: parx_core::manifest::Manifest =
-                serde_json::from_reader(File::open(&manifest)?)?;
+            let mf: parx_core::manifest::Manifest = match std::fs::File::open(&manifest) {
+                Ok(f) => serde_json::from_reader(f)?,
+                Err(_) => try_load_embedded_manifest(&manifest).ok_or_else(|| {
+                    anyhow::anyhow!("manifest not found and no embedded backup located")
+                })?,
+            };
             let ar = parx_core::parity_audit::audit(std::path::Path::new(&mf.parity_dir))?;
             if json {
                 println!("{}", serde_json::to_string(&ar)?);
@@ -572,6 +589,19 @@ fn exit_code_for_error(e: &anyhow::Error) -> i32 {
     }
     // Default: generic software error
     70 // EX_SOFTWARE
+}
+
+fn try_load_embedded_manifest(manifest_path: &Path) -> Option<parx_core::manifest::Manifest> {
+    // Derive parity dir from the provided manifest path (..../.parx/manifest.json)
+    let par_dir = manifest_path.parent()?;
+    // Look for vol-000.parxv in that directory
+    let vol0 = par_dir.join("vol-000.parxv");
+    let mut f = File::open(&vol0).ok()?;
+    if let Ok(Some(json_bytes)) = parx_core::index::read_manifest_backup_json(&mut f) {
+        serde_json::from_slice(&json_bytes).ok()
+    } else {
+        None
+    }
 }
 
 fn main() {
